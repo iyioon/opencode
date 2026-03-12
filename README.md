@@ -7,7 +7,8 @@ A workflow automation tool for OpenCode that handles development tasks from star
 - **Interactive Mode**: Launch OpenCode with an initial prompt that guides task input
 - **GitHub Issue Integration**: Fetch and work on GitHub issues automatically
 - **GitHub PR Support**: Work on PRs to implement requested changes
-- **PR Review Mode**: Read-only review of PRs with automated feedback posting
+- **PR Review Mode**: Read-only review of PRs with automated, professional feedback posting
+- **Professional AI Comments**: Structured, actionable comments following industry best practices
 - **Plain Text Tasks**: Work on any task described in plain text
 - **Git Worktree Isolation**: Each task runs in its own isolated worktree
 - **Automatic Cleanup**: Clean shutdown and resource management
@@ -87,6 +88,8 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 - [Installation Guide](docs/installation.md)
 - [Usage Guide](docs/usage.md)
 - [Configuration](docs/configuration.md)
+- [AI Comment Guidelines](docs/ai-comment-guidelines.md) - Best practices for professional AI-generated comments
+- [Agent Configuration](docs/agent-configuration.md) - Agent behavior and comment posting configuration
 
 ## How It Works
 
@@ -107,8 +110,17 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 
 1. **Fetch PR**: Gets PR details, diff, comments, and existing reviews
 2. **Run OpenCode**: Launches OpenCode with read-only `review` agent (TUI or background)
-3. **Analyze**: Agent reviews code for issues, bugs, and improvements
-4. **Post Comment**: Agent posts review comment via `gh pr review`
+3. **Analyze**: Agent reviews code for issues, bugs, and improvements following professional standards
+4. **Post Comment**: Agent posts structured review comment via `gh pr review`
+
+The review agent follows industry best practices for AI-generated comments:
+- **Structured format** with clear sections and severity labels
+- **Evidence-based** findings with file paths and line numbers
+- **Actionable suggestions** with corrected code examples
+- **Professional tone** that's direct, concise, and definitive
+- **No meta-commentary** - only the review content, posted once
+
+See [docs/ai-comment-guidelines.md](docs/ai-comment-guidelines.md) for complete formatting standards.
 
 ## Agents
 
@@ -160,6 +172,9 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 |----------|-------------|
 | `AID_DEBUG=1` | Enable debug output |
 | `AID_DRY_RUN=1` | Show what would be done without executing |
+| `AID_COMMENT_MODE=true` | Enable comment posting mode for dispatch agent |
+| `AID_COMMENT_FORMAT=structured` | Set comment format (structured, minimal, detailed) |
+| `AID_DRAFT_MODE=true` | Show comment preview without posting |
 
 ## License
 

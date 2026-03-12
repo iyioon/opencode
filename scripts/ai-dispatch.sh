@@ -635,10 +635,14 @@ Source: $input"
 
         log_info "Fetching PR #${pr_number} details..."
 
-        local pr_json pr_title
-        pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files 2>/dev/null) ||
+        local pr_json pr_title pr_branch_name
+        pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files,headRefName 2>/dev/null) ||
             die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
         pr_title=$(echo "$pr_json" | jq -r '.title')
+        pr_branch_name=$(echo "$pr_json" | jq -r '.headRefName')
+
+        # Use the PR's actual branch instead of creating a new aid/ branch
+        branch_name="$pr_branch_name"
 
         task_description="GitHub PR #${pr_number}: ${pr_title}
 
@@ -652,6 +656,7 @@ Source: $input
 Review the PR comments and requested changes, then implement the necessary fixes."
 
         log_info "PR: #${pr_number} - ${pr_title}"
+        log_info "PR branch: ${pr_branch_name}"
     else
         task_type="plain_text"
         task_source="cli"
@@ -674,13 +679,26 @@ Review the PR comments and requested changes, then implement the necessary fixes
 
     # Fetch latest changes
     log_info "Fetching latest changes..."
-    git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
+    git fetch origin 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
 
-    # Create worktree with new branch
+    # Create worktree - use existing PR branch or create new branch
     log_info "Creating worktree..."
-    git worktree add -b "$branch_name" "$worktree_path" "origin/${default_branch}" 2>/dev/null ||
-        git worktree add -b "$branch_name" "$worktree_path" "$default_branch" ||
-        die "Failed to create worktree"
+    if [[ "$task_type" == "github_pr" ]]; then
+        # For PR tasks: check out the existing PR branch so fixes go directly to the PR
+        # First try using existing local branch, then create tracking branch from remote
+        if git show-ref --verify --quiet "refs/heads/${branch_name}" 2>/dev/null; then
+            git worktree add "$worktree_path" "$branch_name" ||
+                die "Failed to create worktree for PR branch: $branch_name"
+        else
+            git worktree add --track -b "$branch_name" "$worktree_path" "origin/${branch_name}" ||
+                die "Failed to create worktree for PR branch: $branch_name"
+        fi
+    else
+        # For issues/text tasks: create a new aid/ branch off the default branch
+        git worktree add -b "$branch_name" "$worktree_path" "origin/${default_branch}" 2>/dev/null ||
+            git worktree add -b "$branch_name" "$worktree_path" "$default_branch" ||
+            die "Failed to create worktree"
+    fi
 
     # Create state file
     local state_file
@@ -699,7 +717,18 @@ Review the PR comments and requested changes, then implement the necessary fixes
 
     # Prepare the task prompt - just the task and context, agent already knows the workflow
     local task_prompt
-    task_prompt="## Task
+    if [[ "$task_type" == "github_pr" ]]; then
+        task_prompt="## Task
+
+${task_description}
+
+## Context
+
+- Worktree: ${worktree_path}
+- Branch: ${branch_name} (push directly to update the PR)
+- Target branch: ${default_branch}"
+    else
+        task_prompt="## Task
 
 ${task_description}
 
@@ -707,6 +736,7 @@ ${task_description}
 
 - Worktree: ${worktree_path}
 - Target branch: ${default_branch}"
+    fi
 
     # Change to worktree and run OpenCode
     log_info "Starting OpenCode in worktree..."

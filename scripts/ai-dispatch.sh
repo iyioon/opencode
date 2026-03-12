@@ -536,7 +536,7 @@ Begin working on this task now."
     cd "$worktree_path"
 
     # Run OpenCode with the dispatch agent (interactive TUI)
-    opencode --agent dispatch "$task_prompt"
+    opencode --agent dispatch --prompt "$task_prompt"
 
     log_success "AI dispatch completed"
 }

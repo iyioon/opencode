@@ -91,16 +91,18 @@ This allows OpenCode to work in the worktrees directory.
 
 ## Branch Naming
 
-Default patterns:
-- GitHub issues: `aid/issue-<number>`
-- Plain text: `aid/task-<sanitized>-<timestamp>`
+The system uses a unique session ID for all branches to avoid collisions.
 
-To change the prefix, edit the script:
+Format: `aid/<YYYYMMDD-HHMMSS-PID>`
+Example: `aid/20250312-143022-1234`
+
+The worktree directory also uses this session ID.
+
+To change the prefix, edit `~/.config/opencode/scripts/ai-dispatch.sh`:
 
 ```bash
-# Find these lines and change "aid/" to your preferred prefix
-branch_name="aid/issue-${issue_number}"
-branch_name="aid/task-${sanitized}-$(date +%H%M%S)"
+# Find this line and change "aid/" to your preferred prefix
+branch_name="aid/${session_id}"
 ```
 
 ## Target Branch for PRs

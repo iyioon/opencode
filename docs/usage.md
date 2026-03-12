@@ -47,12 +47,13 @@ aid https://github.com/owner/repo/issues/123
 
 The tool will:
 1. Fetch the issue title and description
-2. Create a branch named `aid/issue-123`
-3. Set up a worktree in `~/.config/opencode/worktrees/aid-issue-123`
-4. Work on the task automatically
-5. Create commits as it progresses
-6. Review the changes
-7. Create a PR against the main branch
+2. Create a unique session ID (e.g., `20250312-143022-1234`)
+3. Create a branch named `aid/20250312-143022-1234`
+4. Set up a worktree in `~/.config/opencode/worktrees/20250312-143022-1234`
+5. Work on the task automatically
+6. Create commits as it progresses
+7. Review the changes
+8. Create a PR against the main branch
 
 ### Working on a GitHub PR
 
@@ -63,7 +64,7 @@ aid https://github.com/owner/repo/pull/456
 
 The agent will:
 1. Fetch the PR details and review comments
-2. Create a branch named `aid/pr-456`
+2. Create a branch named `aid/20250312-143022-5678` (using a unique session ID)
 3. Implement the requested changes
 4. Push commits to the PR branch
 
@@ -345,12 +346,12 @@ AID_DEBUG=1 aid review https://github.com/owner/repo/pull/123
    - For GitHub issues/PRs, fetches details via `gh` CLI
 
 2. **Branch Creation**
-   - GitHub issues: `aid/issue-<number>`
-   - GitHub PRs: `aid/pr-<number>`
-   - Plain text: `aid/task-<sanitized-description>-<timestamp>`
+   - Uses a unique session ID for branch naming
+   - Format: `aid/<timestamp>-<pid>`
+   - Example: `aid/20250312-143022-1234`
 
 3. **Worktree Setup**
-   - Creates worktree in `~/.config/opencode/worktrees/`
+   - Creates worktree in `~/.config/opencode/worktrees/<session-id>`
    - Based on latest `origin/main` (or `origin/master`)
 
 4. **State Tracking**

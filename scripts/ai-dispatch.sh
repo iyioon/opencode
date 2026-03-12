@@ -515,10 +515,10 @@ review_pr() {
     
     if [[ "$background_mode" == "true" ]]; then
         # Non-interactive mode (headless/background)
-        opencode run --agent review --prompt "$review_prompt" 2>/dev/null
+        opencode run --agent review "$review_prompt" 2>/dev/null
     else
         # Interactive TUI mode (default)
-        opencode --agent review --prompt "$review_prompt"
+        opencode --agent review "$review_prompt"
     fi
 
     log_success "PR review completed"
@@ -661,10 +661,10 @@ ${task_description}
     # Run OpenCode with the dispatch agent
     if [[ "$background_mode" == "true" ]]; then
         # Non-interactive mode (headless/background)
-        opencode run --agent dispatch --title "AI Task: $(echo "$task_description" | head -c 50)..." "$task_prompt" 2>/dev/null
+        opencode run --agent dispatch --title "AI Task: $(echo "$task_description" | cut -c1-50)..." "$task_prompt" 2>/dev/null
     else
         # Interactive TUI mode (default)
-        opencode --agent dispatch --title "AI Task: $(echo "$task_description" | head -c 50)..." --prompt "$task_prompt"
+        opencode --agent dispatch --title "AI Task: $(echo "$task_description" | cut -c1-50)..." --prompt "$task_prompt"
     fi
 
     log_success "AI dispatch completed"
@@ -914,9 +914,10 @@ main() {
         background_mode="true"
         shift
         cmd="${1:-}"
-        if [[ -z "$cmd" ]]; then
-            die "Usage: aid --background <task|url>"
-        fi
+    fi
+    
+    if [[ "$background_mode" == "true" && -z "$cmd" ]]; then
+        die "Usage: aid --background <task|url>"
     fi
 
     case "$cmd" in
@@ -967,23 +968,10 @@ main() {
             ;;
         review)
             if [[ -z "${2:-}" ]]; then
-                die "Usage: aid review [--background] <pr-url>"
-            fi
-            local review_background="$background_mode"
-            local pr_url=""
-            
-            # Parse arguments for review command
-            if [[ "$2" == "--background" || "$2" == "-b" ]]; then
-                review_background="true"
-                if [[ -z "${3:-}" ]]; then
-                    die "Usage: aid review --background <pr-url>"
-                fi
-                pr_url="$3"
-            else
-                pr_url="$2"
+                die "Usage: aid review <pr-url>"
             fi
             
-            review_pr "$pr_url" "$review_background"
+            review_pr "$2" "$background_mode"
             ;;
         *)
             # Assume it's a task description or URL

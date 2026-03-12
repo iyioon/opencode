@@ -348,12 +348,24 @@ cleanup_orphans() {
 
 list_sessions() {
     local count=0
+    
+    # Column widths
+    local col_session=20
+    local col_status=12
+    local col_branch=35
+    local col_created=20
+    local total_width=$((col_session + col_status + col_branch + col_created))
+    
+    # Generate separator line
+    local separator
+    separator=$(printf '%*s' "$total_width" '' | tr ' ' '─')
 
     echo ""
     printf '%b\n' "${BOLD}Active AI Dispatch Sessions${NC}"
-    echo "─────────────────────────────────────────────────────────────────"
-    printf "%-20s %-15s %-30s %s\n" "SESSION" "STATUS" "BRANCH" "CREATED"
-    echo "─────────────────────────────────────────────────────────────────"
+    echo "$separator"
+    printf "%-${col_session}s %-${col_status}s %-${col_branch}s %-${col_created}s\n" \
+        "SESSION" "STATUS" "BRANCH" "CREATED"
+    echo "$separator"
 
     for state_file in "${DISPATCH_DIR}"/*.json; do
         [[ -f "$state_file" ]] || continue
@@ -363,6 +375,11 @@ list_sessions() {
         status=$(jq -r '.status' "$state_file" 2>/dev/null || echo "unknown")
         branch_name=$(jq -r '.branch_name' "$state_file" 2>/dev/null || echo "unknown")
         created_at=$(jq -r '.created_at' "$state_file" 2>/dev/null || echo "unknown")
+        
+        # Truncate branch name if too long
+        if [[ ${#branch_name} -gt $((col_branch - 2)) ]]; then
+            branch_name="${branch_name:0:$((col_branch - 5))}..."
+        fi
 
         # Color status
         local status_colored
@@ -373,11 +390,12 @@ list_sessions() {
             *) status_colored="${YELLOW}${status}${NC}" ;;
         esac
 
-        printf "%-20s %-15b %-30s %s\n" "$session_id" "$status_colored" "$branch_name" "$created_at"
+        printf "%-${col_session}s %-${col_status}b %-${col_branch}s %-${col_created}s\n" \
+            "$session_id" "$status_colored" "$branch_name" "$created_at"
         count=$((count + 1))
     done
 
-    echo "─────────────────────────────────────────────────────────────────"
+    echo "$separator"
 
     if [[ $count -eq 0 ]]; then
         echo "No active sessions"

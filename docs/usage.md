@@ -286,6 +286,41 @@ aid resume 20250312-143022-1234
 
 This opens OpenCode in the existing worktree with conversation history.
 
+### View Session Details
+
+To inspect a session's metadata, commits, and PR status:
+
+```bash
+aid view 20250312-143022-1234
+```
+
+Output:
+```
+Session: 20250312-143022-1234
+─────────────────────────────────────────────
+Status:        running
+Created:       2025-03-12T14:30:22Z
+Type:          github_issue
+Branch:        ai/issue-123
+Worktree:      /Users/you/.config/opencode/worktrees/ai-issue-123
+
+Task Description
+─────────────────────────────────────────────
+GitHub Issue #123: Fix login button on mobile
+
+Recent Commits
+─────────────────────────────────────────────
+abc1234 feat: add touch event handler
+def5678 fix: increase tap target size
+
+Pull Request
+─────────────────────────────────────────────
+  #124 - Fix login button on mobile (open)
+  https://github.com/owner/repo/pull/124
+
+Open session in OpenCode? [y/N]
+```
+
 ### Clean Up Orphaned Sessions
 
 If sessions weren't cleaned up properly (e.g., system crash):

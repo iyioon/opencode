@@ -747,6 +747,93 @@ resume_session() {
 }
 
 # ==============================================================================
+# View Session
+# ==============================================================================
+
+view_session() {
+    local session_id="$1"
+    local state_json
+
+    state_json=$(read_state "$session_id") || die "Session not found: $session_id"
+
+    # Extract fields
+    local branch_name worktree_path status created_at task_type task_source task_description source_repo
+    branch_name=$(echo "$state_json" | jq -r '.branch_name')
+    worktree_path=$(echo "$state_json" | jq -r '.worktree_path')
+    status=$(echo "$state_json" | jq -r '.status')
+    created_at=$(echo "$state_json" | jq -r '.created_at')
+    task_type=$(echo "$state_json" | jq -r '.task_type')
+    task_source=$(echo "$state_json" | jq -r '.task_source')
+    task_description=$(echo "$state_json" | jq -r '.task_description')
+    source_repo=$(echo "$state_json" | jq -r '.source_repo')
+
+    # Color status
+    local status_colored
+    case "$status" in
+        running) status_colored="${GREEN}${status}${NC}" ;;
+        completed) status_colored="${BLUE}${status}${NC}" ;;
+        failed) status_colored="${RED}${status}${NC}" ;;
+        *) status_colored="${YELLOW}${status}${NC}" ;;
+    esac
+
+    # --- Display metadata ---
+    echo ""
+    printf '%b\n' "${BOLD}Session: ${session_id}${NC}"
+    printf '%s\n' "─────────────────────────────────────────────"
+    printf "%-14s %b\n" "Status:" "$status_colored"
+    printf "%-14s %s\n" "Created:" "$created_at"
+    printf "%-14s %s\n" "Type:" "$task_type"
+    printf "%-14s %s\n" "Branch:" "$branch_name"
+    printf "%-14s %s\n" "Worktree:" "$worktree_path"
+    echo ""
+    printf '%b\n' "${BOLD}Task Description${NC}"
+    printf '%s\n' "─────────────────────────────────────────────"
+    echo "$task_description" | head -10
+    echo ""
+
+    # --- Git log (if worktree exists) ---
+    if [[ -d "$worktree_path" ]]; then
+        printf '%b\n' "${BOLD}Recent Commits${NC}"
+        printf '%s\n' "─────────────────────────────────────────────"
+        (
+            cd "$worktree_path"
+            local default_branch
+            default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+            git log --oneline "origin/${default_branch}..HEAD" 2>/dev/null | head -10 || echo "  (no commits yet)"
+        )
+        echo ""
+    else
+        printf '%b\n' "${YELLOW}Worktree not found: ${worktree_path}${NC}"
+        echo ""
+    fi
+
+    # --- PR status (check if branch has a PR) ---
+    if [[ -n "$source_repo" && -d "$source_repo" ]]; then
+        printf '%b\n' "${BOLD}Pull Request${NC}"
+        printf '%s\n' "─────────────────────────────────────────────"
+        local pr_info
+        pr_info=$(cd "$source_repo" && gh pr list --head "$branch_name" --json number,title,state,url 2>/dev/null)
+
+        if [[ -n "$pr_info" && "$pr_info" != "[]" ]]; then
+            echo "$pr_info" | jq -r '.[] | "  #\(.number) - \(.title) (\(.state))\n  \(.url)"'
+        else
+            echo "  (no PR found for branch: $branch_name)"
+        fi
+        echo ""
+    fi
+
+    # --- Prompt to open in OpenCode ---
+    if [[ -d "$worktree_path" ]]; then
+        printf '%b' "Open session in OpenCode? [y/N] "
+        read -r response
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            cd "$worktree_path"
+            opencode -c
+        fi
+    fi
+}
+
+# ==============================================================================
 # Usage
 # ==============================================================================
 
@@ -761,6 +848,7 @@ ${BOLD}USAGE${NC}
     aid "task description"      Work on a plain text task (runs in background, no TUI)
     aid review [--interactive] <pr-url>  Review a PR and post feedback (read-only)
     aid list                    List active dispatch sessions
+    aid view <session-id>       View session details and optionally resume
     aid cleanup [--force]       Clean up orphaned sessions
     aid resume <session-id>     Resume a previous session
     aid help                    Show this help message
@@ -792,6 +880,9 @@ ${BOLD}EXAMPLES${NC}
     # List all sessions
     aid list
 
+    # View session details
+    aid view 20260313-143052-12345
+
     # Clean up orphaned worktrees
     aid cleanup --force
 
@@ -799,7 +890,7 @@ ${BOLD}WORKFLOW${NC}
     1. AI creates PR via dispatch    -> PR opened
     2. You run: aid review <pr-url>  -> AI posts review comment
     3. If issues found:              -> Run: aid <pr-url> to fix
-    4. When satisfied:               -> Comment "LGTM" to merge
+    4. When satisfied:               -> gh pr merge --delete-branch
 
 ${BOLD}ENVIRONMENT${NC}
     AID_DEBUG=1       Enable debug output
@@ -864,6 +955,12 @@ main() {
                 die "Usage: aid resume <session-id>"
             fi
             resume_session "$2"
+            ;;
+        view|show)
+            if [[ -z "${2:-}" ]]; then
+                die "Usage: aid view <session-id>"
+            fi
+            view_session "$2"
             ;;
         review)
             if [[ -z "${2:-}" ]]; then

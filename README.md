@@ -37,6 +37,9 @@ aid "Add dark mode toggle to settings page"
 # List active sessions
 aid list
 
+# View session details (commits, PR status, etc.)
+aid view 20250312-143022-1234
+
 # Clean up orphaned sessions
 aid cleanup --force
 ```

@@ -4,12 +4,12 @@
 #
 # Usage:
 #   aid                         Open OpenCode TUI interactively for user to provide task
-#   aid <github-issue-url>      Work on a GitHub issue (runs in background, no TUI)
-#   aid <github-pr-url>         Work on a GitHub PR (runs in background, no TUI)
-#   aid "task description"      Work on a plain text task (runs in background, no TUI)
+#   aid <github-issue-url>      Work on a GitHub issue (headless, no TUI)
+#   aid <github-pr-url>         Work on a GitHub PR (headless, no TUI)
+#   aid "task description"      Work on a plain text task (headless, no TUI)
 #   aid review [--interactive] <pr-url>  Review a PR and post feedback (read-only)
 #   aid list                    List active dispatch sessions
-#   aid cleanup [--force]       Clean up orphaned sessions
+#   aid cleanup [--failed|--all] [--force]  Clean up sessions
 #   aid resume <session-id>     Resume a previous session
 #
 # Environment:
@@ -286,12 +286,18 @@ cleanup() {
 }
 
 # Clean up orphaned sessions
-cleanup_orphans() {
-    local force="${1:-false}"
+cleanup_sessions() {
+    local mode="${1:-}" # "orphaned", "failed", or "all"
+    local force="${2:-false}"
     local cleaned=0
     local found=0
 
-    log_info "Scanning for orphaned sessions..."
+    case "$mode" in
+        orphaned) log_info "Scanning for orphaned sessions..." ;;
+        failed) log_info "Scanning for failed sessions..." ;;
+        all) log_info "Scanning for all cleanable sessions..." ;;
+        *) die "Invalid cleanup mode: $mode" ;;
+    esac
 
     for state_file in "${DISPATCH_DIR}"/*.json; do
         [[ -f "$state_file" ]] || continue
@@ -304,50 +310,59 @@ cleanup_orphans() {
         branch_name=$(jq -r '.branch_name' "$state_file" 2>/dev/null || echo "")
         source_repo=$(jq -r '.source_repo' "$state_file" 2>/dev/null || echo "")
 
-        # Skip completed/failed sessions
-        if [[ "$status" != "running" ]]; then
-            continue
+        local should_clean=false
+        local reason=""
+
+        # Check if this session should be cleaned based on mode
+        if [[ "$status" == "failed" && ("$mode" == "failed" || "$mode" == "all") ]]; then
+            should_clean=true
+            reason="failed"
+        elif [[ "$status" == "running" ]]; then
+            # Check if process is still running
+            if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+                log_debug "Session $session_id (PID $pid) is still running"
+            elif [[ "$mode" == "orphaned" || "$mode" == "all" ]]; then
+                should_clean=true
+                reason="orphaned"
+            fi
         fi
 
-        # Check if process is still running
-        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-            log_debug "Session $session_id (PID $pid) is still running"
-            continue
-        fi
+        if [[ "$should_clean" == "true" ]]; then
+            found=$((found + 1))
+            log_info "Found $reason session: $session_id"
 
-        found=$((found + 1))
-        log_info "Found orphaned session: $session_id"
+            if [[ "$force" == "true" ]]; then
+                # Set cleanup variables and run cleanup
+                CLEANUP_STATE_FILE="$state_file"
+                CLEANUP_WORKTREE_PATH="$worktree_path"
+                CLEANUP_BRANCH_NAME="$branch_name"
+                CLEANUP_SOURCE_REPO="$source_repo"
 
-        if [[ "$force" == "true" ]]; then
-            # Set cleanup variables and run cleanup
-            CLEANUP_STATE_FILE="$state_file"
-            CLEANUP_WORKTREE_PATH="$worktree_path"
-            CLEANUP_BRANCH_NAME="$branch_name"
-            CLEANUP_SOURCE_REPO="$source_repo"
+                update_state_status "$state_file" "$reason"
+                cleanup
+                cleaned=$((cleaned + 1))
 
-            update_state_status "$state_file" "orphaned"
-            cleanup
-            cleaned=$((cleaned + 1))
-
-            # Reset cleanup variables
-            CLEANUP_STATE_FILE=""
-            CLEANUP_WORKTREE_PATH=""
-            CLEANUP_BRANCH_NAME=""
-            CLEANUP_SOURCE_REPO=""
-        else
-            echo "  Session: $session_id"
-            echo "  Branch: $branch_name"
-            echo "  Worktree: $worktree_path"
-            echo ""
+                # Reset cleanup variables
+                CLEANUP_STATE_FILE=""
+                CLEANUP_WORKTREE_PATH=""
+                CLEANUP_BRANCH_NAME=""
+                CLEANUP_SOURCE_REPO=""
+            else
+                echo "  Session: $session_id"
+                echo "  Status: $reason"
+                echo "  Branch: $branch_name"
+                echo "  Worktree: $worktree_path"
+                echo ""
+            fi
         fi
     done
 
     if [[ "$force" == "true" ]]; then
-        log_success "Cleaned up $cleaned orphaned session(s)"
+        log_success "Cleaned up $cleaned session(s)"
     elif [[ $found -eq 0 ]]; then
-        log_success "No orphaned sessions found"
+        log_success "No sessions to clean up"
     else
-        log_info "Run 'aid cleanup --force' to remove these $found session(s)"
+        log_info "Run with --force to remove these $found session(s)"
     fi
 }
 
@@ -858,10 +873,16 @@ ${BOLD}USAGE${NC}
     aid review [--interactive] <pr-url>  Review a PR and post feedback (read-only)
     aid list                    List active dispatch sessions
     aid view <session-id>       View session details and optionally resume
-    aid cleanup [--force]       Clean up orphaned sessions
+    aid cleanup [options]       Clean up sessions (see options below)
     aid resume <session-id>     Resume a previous session
     aid help                    Show this help message
     aid --version               Show version information
+
+${BOLD}CLEANUP OPTIONS${NC}
+    --force, -f                 Actually remove sessions (without this, just lists them)
+    --failed                    Clean up failed sessions
+    --all                       Clean up both orphaned and failed sessions
+    (default)                   Clean up orphaned sessions (running but process died)
 
 ${BOLD}MODES${NC}
     ${BOLD}Interactive Mode${NC}   - Opens OpenCode TUI with guided prompts
@@ -892,8 +913,14 @@ ${BOLD}EXAMPLES${NC}
     # View session details
     aid view 20260313-143052-12345
 
-    # Clean up orphaned worktrees
+    # Clean up orphaned sessions (process died)
     aid cleanup --force
+
+    # Clean up failed sessions
+    aid cleanup --failed --force
+
+    # Clean up all (orphaned + failed)
+    aid cleanup --all --force
 
 ${BOLD}WORKFLOW${NC}
     1. AI creates PR via dispatch    -> PR opened
@@ -953,11 +980,22 @@ main() {
             list_sessions
             ;;
         cleanup|clean)
+            local mode="orphaned"
             local force="false"
-            if [[ "${2:-}" == "--force" || "${2:-}" == "-f" ]]; then
-                force="true"
-            fi
-            cleanup_orphans "$force"
+            
+            # Parse cleanup flags
+            shift
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --force|-f) force="true" ;;
+                    --failed) mode="failed" ;;
+                    --all) mode="all" ;;
+                    *) die "Unknown cleanup option: $1" ;;
+                esac
+                shift
+            done
+            
+            cleanup_sessions "$mode" "$force"
             ;;
         resume)
             if [[ -z "${2:-}" ]]; then

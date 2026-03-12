@@ -19,5 +19,14 @@
 		"external_directory": {
 			"~/.config/opencode/worktrees/**": "allow"
 		}
+	},
+	"agents": {
+		"comment_defaults": {
+			"format": "structured",
+			"include_code_suggestions": true,
+			"include_severity_labels": true,
+			"confidence_threshold": 0.8,
+			"max_issues_per_review": 10
+		}
 	}
 }

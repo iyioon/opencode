@@ -5,7 +5,9 @@
 # Usage:
 #   aid                         Open OpenCode TUI interactively for user to provide task
 #   aid <github-issue-url>      Work on a GitHub issue (runs in background, no TUI)
+#   aid <github-pr-url>         Work on a GitHub PR (runs in background, no TUI)
 #   aid "task description"      Work on a plain text task (runs in background, no TUI)
+#   aid review [--interactive] <pr-url>  Review a PR and post feedback (read-only)
 #   aid list                    List active dispatch sessions
 #   aid cleanup [--force]       Clean up orphaned sessions
 #   aid resume <session-id>     Resume a previous session
@@ -94,9 +96,15 @@ sanitize_branch_name() {
 # ==============================================================================
 
 # Check if input looks like a GitHub issue URL
-is_github_url() {
+is_github_issue_url() {
     local input="$1"
     [[ "$input" =~ ^https?://github\.com/[^/]+/[^/]+/issues/[0-9]+$ ]]
+}
+
+# Check if input looks like a GitHub PR URL
+is_github_pr_url() {
+    local input="$1"
+    [[ "$input" =~ ^https?://github\.com/[^/]+/[^/]+/pull/[0-9]+$ ]]
 }
 
 # Extract issue number from GitHub URL
@@ -479,6 +487,76 @@ After you provide your initial task description, I'll review it and ask if you n
 }
 
 # ==============================================================================
+# PR Review (Read-Only and Interactive)
+# ==============================================================================
+
+review_pr() {
+    local pr_url="$1"
+    local interactive_mode="${2:-false}"
+
+    # Validate it's a PR URL (not issue)
+    if ! is_github_pr_url "$pr_url"; then
+        die "Invalid PR URL. Expected: https://github.com/owner/repo/pull/123"
+    fi
+
+    local repo_path pr_number
+    repo_path=$(echo "$pr_url" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/pull/[0-9]+|\1|')
+    pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
+
+    log_info "Reviewing PR #${pr_number} in ${repo_path}..."
+
+    # Fetch PR details
+    local pr_json
+    pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files,additions,deletions,commits,author,comments,reviews 2>/dev/null) ||
+        die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
+
+    local pr_title pr_author pr_additions pr_deletions
+    pr_title=$(echo "$pr_json" | jq -r '.title')
+    pr_author=$(echo "$pr_json" | jq -r '.author.login')
+    pr_additions=$(echo "$pr_json" | jq -r '.additions')
+    pr_deletions=$(echo "$pr_json" | jq -r '.deletions')
+
+    log_info "PR: #${pr_number} - ${pr_title}"
+    log_info "Author: ${pr_author} (+${pr_additions}/-${pr_deletions} lines)"
+
+    # Prepare review prompt
+    local review_prompt
+    review_prompt="You are reviewing a GitHub Pull Request.
+
+## PR Details
+
+**Title**: ${pr_title}
+**Author**: ${pr_author}
+**URL**: ${pr_url}
+**Changes**: +${pr_additions}/-${pr_deletions} lines
+
+## Your Task
+
+1. Analyze the PR diff and understand the changes
+2. Review for code quality, bugs, and improvements
+3. Post a structured review comment using the gh CLI
+
+Run this command now to start your review:
+
+\`\`\`bash
+opencode run --command '/review-pr' '${pr_url}'
+\`\`\`"
+
+    # Run OpenCode with review agent
+    log_info "Starting code review..."
+    
+    if [[ "$interactive_mode" == "true" ]]; then
+        # Interactive TUI mode
+        opencode --agent review --prompt "$review_prompt"
+    else
+        # Non-interactive mode (existing behavior)
+        opencode run --agent review --prompt "$review_prompt" 2>/dev/null
+    fi
+
+    log_success "PR review completed"
+}
+
+# ==============================================================================
 # Main Dispatch Logic
 # ==============================================================================
 
@@ -497,8 +575,8 @@ dispatch() {
     log_debug "Source repo: $source_repo"
     log_debug "Default branch: $default_branch"
 
-    # Parse input - GitHub issue or plain text
-    if is_github_url "$input"; then
+    # Parse input - GitHub issue, PR, or plain text
+    if is_github_issue_url "$input"; then
         task_type="github_issue"
         task_source="$input"
 
@@ -519,6 +597,34 @@ Labels: $(echo "$issue_json" | jq -r '.labels | map(.name) | join(", ") // "none
 Source: $input"
 
         log_info "Issue: #${issue_number} - ${issue_title}"
+    elif is_github_pr_url "$input"; then
+        task_type="github_pr"
+        task_source="$input"
+
+        local repo_path pr_number
+        repo_path=$(echo "$input" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/pull/[0-9]+|\1|')
+        pr_number=$(echo "$input" | grep -oE '[0-9]+$')
+
+        log_info "Fetching PR #${pr_number} details..."
+
+        local pr_json pr_title
+        pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files 2>/dev/null) ||
+            die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
+        pr_title=$(echo "$pr_json" | jq -r '.title')
+
+        branch_name="ai/pr-${pr_number}"
+        task_description="GitHub PR #${pr_number}: ${pr_title}
+
+$(echo "$pr_json" | jq -r '.body // "No description provided"')
+
+Changed files:
+$(echo "$pr_json" | jq -r '.files[].path' | head -20)
+
+Source: $input
+
+Review the PR comments and requested changes, then implement the necessary fixes."
+
+        log_info "PR: #${pr_number} - ${pr_title}"
     else
         task_type="plain_text"
         task_source="cli"
@@ -651,7 +757,9 @@ ${BOLD}aid${NC} - Autonomous AI workflow for OpenCode
 ${BOLD}USAGE${NC}
     aid                         Open OpenCode TUI interactively for user to provide task
     aid <github-issue-url>      Work on a GitHub issue (runs in background, no TUI)
+    aid <github-pr-url>         Work on a GitHub PR (implement requested changes, background)
     aid "task description"      Work on a plain text task (runs in background, no TUI)
+    aid review [--interactive] <pr-url>  Review a PR and post feedback (read-only)
     aid list                    List active dispatch sessions
     aid cleanup [--force]       Clean up orphaned sessions
     aid resume <session-id>     Resume a previous session
@@ -669,6 +777,15 @@ ${BOLD}EXAMPLES${NC}
     # Direct mode - work on a GitHub issue (background execution)
     aid https://github.com/user/repo/issues/123
 
+    # Work on a GitHub PR (fix requested changes, background)
+    aid https://github.com/user/repo/pull/456
+
+    # Review a PR without making changes (background)
+    aid review https://github.com/user/repo/pull/456
+
+    # Review a PR interactively with TUI
+    aid review --interactive https://github.com/user/repo/pull/456
+
     # Direct mode - work on a custom task (background execution)  
     aid "Add dark mode toggle to settings page"
 
@@ -677,6 +794,12 @@ ${BOLD}EXAMPLES${NC}
 
     # Clean up orphaned worktrees
     aid cleanup --force
+
+${BOLD}WORKFLOW${NC}
+    1. AI creates PR via dispatch    -> PR opened
+    2. You run: aid review <pr-url>  -> AI posts review comment
+    3. If issues found:              -> Run: aid <pr-url> to fix
+    4. When satisfied:               -> Comment "LGTM" to merge
 
 ${BOLD}ENVIRONMENT${NC}
     AID_DEBUG=1       Enable debug output
@@ -741,6 +864,26 @@ main() {
                 die "Usage: aid resume <session-id>"
             fi
             resume_session "$2"
+            ;;
+        review)
+            if [[ -z "${2:-}" ]]; then
+                die "Usage: aid review [--interactive] <pr-url>"
+            fi
+            local interactive_flag="false"
+            local pr_url=""
+            
+            # Parse arguments for review command
+            if [[ "$2" == "--interactive" || "$2" == "-i" ]]; then
+                interactive_flag="true"
+                if [[ -z "${3:-}" ]]; then
+                    die "Usage: aid review --interactive <pr-url>"
+                fi
+                pr_url="$3"
+            else
+                pr_url="$2"
+            fi
+            
+            review_pr "$pr_url" "$interactive_flag"
             ;;
         *)
             # Assume it's a task description or URL

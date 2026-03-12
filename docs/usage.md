@@ -75,6 +75,19 @@ The agent will:
 6. Self-review the changes
 7. Create a PR against the main branch
 
+### Working on a GitHub PR
+
+```bash
+# Work on an existing PR (implement requested changes)
+aid https://github.com/owner/repo/pull/456
+```
+
+The agent will:
+1. Fetch the PR details and review comments
+2. Create a branch named `ai/pr-456`
+3. Implement the requested changes
+4. Push commits to the PR branch
+
 ### Working on a Plain Text Task
 
 ```bash
@@ -84,6 +97,161 @@ aid "Add a dark mode toggle to the settings page"
 # More detailed descriptions work better
 aid "Refactor the user authentication module to use JWT tokens instead of session cookies. Update all related tests."
 ```
+
+---
+
+## PR Review Workflow
+
+The `aid review` command enables a **human-in-the-loop** workflow for reviewing AI-generated (or any) pull requests. This is the recommended way to quality-check work before merging.
+
+### Quick Start
+
+```bash
+# Review a PR (read-only, posts comment)
+aid review https://github.com/owner/repo/pull/123
+```
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Step 1: AI creates PR (or human opens PR)                      │
+│  └─> PR opened: https://github.com/owner/repo/pull/42          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Step 2: Run review                                             │
+│  $ aid review https://github.com/owner/repo/pull/42            │
+│                                                                 │
+│  The review agent:                                              │
+│  • Fetches PR diff, description, and existing comments          │
+│  • Analyzes code for bugs, quality issues, improvements         │
+│  • Posts a structured review comment to the PR                  │
+│  • Does NOT edit any files or create commits                    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Step 3: Review the feedback                                    │
+│                                                                 │
+│  The posted comment includes:                                   │
+│  • Code quality issues (with file:line references)              │
+│  • Improvement suggestions                                      │
+│  • Verdict: Approve / Request Changes / Comment                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+     ┌────────────────┐              ┌────────────────┐
+     │ Verdict:       │              │ Verdict:       │
+     │ Approve        │              │ Request Changes│
+     └───────┬────────┘              └───────┬────────┘
+             │                               │
+             ▼                               ▼
+     ┌────────────────┐              ┌────────────────┐
+     │ Comment "LGTM" │              │ Run:           │
+     │ Then merge PR  │              │ aid <pr-url>   │
+     └────────────────┘              │ to fix issues  │
+                                     └───────┬────────┘
+                                             │
+                                             ▼
+                                     ┌────────────────┐
+                                     │ AI implements  │
+                                     │ fixes, pushes  │
+                                     │ new commits    │
+                                     └───────┬────────┘
+                                             │
+                                             ▼
+                                     ┌────────────────┐
+                                     │ Run review     │
+                                     │ again to       │
+                                     │ verify fixes   │
+                                     └────────────────┘
+```
+
+### Review vs Dispatch: Key Differences
+
+| Aspect | `aid review <pr-url>` | `aid <pr-url>` |
+|--------|----------------------|----------------|
+| **Mode** | Read-only | Full access |
+| **Creates worktree** | No | Yes |
+| **Edits files** | No | Yes |
+| **Creates commits** | No | Yes |
+| **Posts PR comment** | Yes | No (creates commits) |
+| **Agent used** | `review` | `dispatch` |
+| **Use case** | Quality check | Implement changes |
+
+### What the Review Comment Includes
+
+The AI posts a structured review comment like this:
+
+```markdown
+## Code Review
+
+### Code Quality Issues
+- [ ] **src/api/handler.ts:42** - Missing error handling for null response
+- [ ] **src/utils/validate.ts:15** - Regex pattern may cause ReDoS vulnerability
+
+### Improvement Suggestions
+- Consider using `optional chaining` in `getUserData()` for cleaner null checks
+- The retry logic could be extracted to a reusable utility function
+
+### Verdict: **Request Changes**
+
+> To address these issues, run:
+> ```
+> aid https://github.com/owner/repo/pull/42
+> ```
+```
+
+### Merge Policy: LGTM
+
+PRs are only merged when you explicitly approve them by commenting **"LGTM"** (Looks Good To Me). This ensures:
+
+1. A human reviews every AI-generated PR
+2. You maintain control over what gets merged
+3. The AI's work is validated before production
+
+### Example: Full Workflow
+
+```bash
+# 1. AI works on an issue and creates a PR
+aid https://github.com/myorg/myrepo/issues/99
+# → AI creates PR #100
+
+# 2. Review the AI's PR
+aid review https://github.com/myorg/myrepo/pull/100
+# → AI posts review comment with findings
+
+# 3a. If approved: comment "LGTM" on the PR to merge
+
+# 3b. If changes needed: dispatch work on the PR
+aid https://github.com/myorg/myrepo/pull/100
+# → AI fixes the issues and pushes new commits
+
+# 4. Review again
+aid review https://github.com/myorg/myrepo/pull/100
+# → Verify fixes, then comment "LGTM" to merge
+```
+
+### Using Review in the TUI
+
+You can also review PRs interactively in OpenCode's TUI:
+
+```bash
+# Start OpenCode
+opencode
+
+# Use the review-pr command
+/review-pr https://github.com/owner/repo/pull/123
+```
+
+Or switch to the review agent and ask directly:
+1. Press **Tab** to cycle to the `review` agent
+2. Paste the PR URL and ask for a review
+
+---
 
 ## Managing Sessions
 
@@ -127,6 +295,8 @@ aid cleanup
 aid cleanup --force
 ```
 
+---
+
 ## Environment Variables
 
 | Variable | Description |
@@ -136,19 +306,22 @@ aid cleanup --force
 
 Example:
 ```bash
-AID_DEBUG=1 aid "Add feature X"
+AID_DEBUG=1 aid review https://github.com/owner/repo/pull/123
 ```
+
+---
 
 ## Workflow Details
 
 ### What Happens During Dispatch
 
 1. **Input Parsing**
-   - Detects if input is a GitHub URL or plain text
-   - For GitHub issues, fetches title, body, and labels via `gh` CLI
+   - Detects if input is a GitHub issue/PR URL or plain text
+   - For GitHub issues/PRs, fetches details via `gh` CLI
 
 2. **Branch Creation**
    - GitHub issues: `ai/issue-<number>`
+   - GitHub PRs: `ai/pr-<number>`
    - Plain text: `ai/task-<sanitized-description>-<timestamp>`
 
 3. **Worktree Setup**
@@ -160,13 +333,28 @@ AID_DEBUG=1 aid "Add feature X"
    - Tracks session ID, branch, worktree path, status
 
 5. **OpenCode Execution**
-   - Runs `opencode run --agent dispatch` with task prompt
+   - Runs `opencode --agent dispatch` with task prompt
    - Agent works autonomously through the task
 
 6. **Cleanup**
    - On exit (normal or interrupted), removes worktree
    - Deletes branch if it wasn't pushed
    - Updates/removes state file
+
+### What Happens During Review
+
+1. **PR Fetching**
+   - Fetches PR metadata (title, description, author)
+   - Retrieves full diff via `gh pr diff`
+   - Loads existing comments and reviews for context
+
+2. **OpenCode Execution**
+   - Runs `opencode --agent review` with PR context
+   - Agent analyzes in read-only mode (cannot edit files)
+
+3. **Review Posting**
+   - Agent posts structured comment via `gh pr review`
+   - No worktree created, no cleanup needed
 
 ### The Dispatch Agent
 
@@ -181,6 +369,20 @@ It follows a structured workflow:
 3. Implement incrementally with commits
 4. Self-review all changes
 5. Create a PR
+
+### The Review Agent
+
+The review agent is configured for read-only analysis:
+- All edit tools disabled (write, edit, patch, multiedit)
+- Bash restricted to read-only commands (git diff, git log, gh pr)
+- Temperature set to 0.3 for consistent behavior
+
+It focuses on:
+1. Understanding the PR context
+2. Analyzing code quality
+3. Posting constructive feedback
+
+---
 
 ## Tips for Better Results
 
@@ -228,3 +430,12 @@ GitHub issues allow for:
 - Labels for categorization
 - Comments for additional context
 - Automatic linking in the PR
+
+### Review Iteratively
+
+For large PRs, you may want to:
+1. Run `aid review` to get initial feedback
+2. Have the AI fix critical issues with `aid <pr-url>`
+3. Run `aid review` again to verify
+4. Repeat until the verdict is "Approve"
+5. Comment "LGTM" to merge

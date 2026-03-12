@@ -20,4 +20,4 @@ Your comment should include:
 - **Verdict**: Approve / Request Changes / Comment
 
 If changes are needed, suggest: `aid <pr-url>`
-If approved: Reply with `LGTM` to merge.
+If approved: `gh pr merge <number> --repo <owner/repo> --squash --delete-branch`

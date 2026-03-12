@@ -150,9 +150,10 @@ aid review https://github.com/owner/repo/pull/123
              │                               │
              ▼                               ▼
      ┌────────────────┐              ┌────────────────┐
-     │ Comment "LGTM" │              │ Run:           │
-     │ Then merge PR  │              │ aid <pr-url>   │
-     └────────────────┘              │ to fix issues  │
+     │ Merge PR with: │              │ Run:           │
+     │ gh pr merge    │              │ aid <pr-url>   │
+     │ --delete-branch│              │ to fix issues  │
+     └────────────────┘              │                │
                                      └───────┬────────┘
                                              │
                                              ▼
@@ -205,13 +206,14 @@ The AI posts a structured review comment like this:
 > ```
 ```
 
-### Merge Policy: LGTM
+### Merge Policy
 
-PRs are only merged when you explicitly approve them by commenting **"LGTM"** (Looks Good To Me). This ensures:
+PRs are merged manually using `gh pr merge --delete-branch`. This ensures:
 
 1. A human reviews every AI-generated PR
 2. You maintain control over what gets merged
 3. The AI's work is validated before production
+4. Branches are automatically cleaned up after merge
 
 ### Example: Full Workflow
 
@@ -224,7 +226,8 @@ aid https://github.com/myorg/myrepo/issues/99
 aid review https://github.com/myorg/myrepo/pull/100
 # → AI posts review comment with findings
 
-# 3a. If approved: comment "LGTM" on the PR to merge
+# 3a. If approved: merge and delete branch
+gh pr merge 100 --repo myorg/myrepo --squash --delete-branch
 
 # 3b. If changes needed: dispatch work on the PR
 aid https://github.com/myorg/myrepo/pull/100
@@ -232,7 +235,7 @@ aid https://github.com/myorg/myrepo/pull/100
 
 # 4. Review again
 aid review https://github.com/myorg/myrepo/pull/100
-# → Verify fixes, then comment "LGTM" to merge
+# → Verify fixes, then merge with: gh pr merge --squash --delete-branch
 ```
 
 ### Using Review in the TUI
@@ -438,4 +441,4 @@ For large PRs, you may want to:
 2. Have the AI fix critical issues with `aid <pr-url>`
 3. Run `aid review` again to verify
 4. Repeat until the verdict is "Approve"
-5. Comment "LGTM" to merge
+5. Merge with `gh pr merge --squash --delete-branch`

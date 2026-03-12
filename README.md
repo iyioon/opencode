@@ -66,9 +66,10 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
                   │                      │
                   ▼                      ▼
         ┌─────────────────┐    ┌─────────────────────┐
-        │ Comment: "LGTM" │    │ Run: aid <pr-url>   │
-        │ → Merge PR      │    │ → AI fixes issues   │
-        └─────────────────┘    └─────────────────────┘
+        │ Merge & delete: │    │ Run: aid <pr-url>   │
+        │ gh pr merge     │    │ → AI fixes issues   │
+        │ --delete-branch │    └─────────────────────┘
+        └─────────────────┘
 ```
 
 ### Review vs Work

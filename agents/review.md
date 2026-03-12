@@ -73,7 +73,10 @@ gh pr review <PR_NUMBER> --repo <OWNER/REPO> --comment --body "$(cat <<'EOF'
 > ```
 
 [If Approve]
-> This PR looks good. Reply with `LGTM` to merge.
+> This PR looks good. To merge and delete the branch:
+> ```
+> gh pr merge <PR_NUMBER> --repo <OWNER/REPO> --squash --delete-branch
+> ```
 EOF
 )"
 ```

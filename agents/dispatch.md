@@ -1,7 +1,6 @@
 ---
 description: Autonomous AI agent for task execution, commits, and PR creation
 mode: primary
-model: github-copilot/claude-sonnet-4
 temperature: 0.3
 permission:
   edit: allow

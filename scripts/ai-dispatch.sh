@@ -465,7 +465,9 @@ Please describe your task in detail. I can help you with:
 6. Self-review my work
 7. Create a pull request
 
-**Please describe what you'd like me to work on:**"
+**Please describe what you'd like me to work on:**
+
+After you provide your initial task description, I'll review it and ask if you need any clarification or if there are additional requirements I should know about before I begin working."
 
     # Change to source repo and run OpenCode with initial prompt
     cd "$source_repo"

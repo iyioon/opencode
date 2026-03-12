@@ -30,22 +30,23 @@ Before installing aid, ensure you have:
 
 ## Installation Steps
 
-### 1. Files are already in place
+### 1. Clone the Repository
 
-If you're reading this, the installation has already created:
-- `~/.config/opencode/scripts/ai-dispatch.sh`
-- `~/.config/opencode/agents/dispatch.md`
-- `~/.config/opencode/commands/*.md`
+Clone this repository directly into your OpenCode configuration directory:
+
+```bash
+# Ensure the directory exists
+mkdir -p ~/.config/opencode
+
+# Clone the repository
+git clone https://github.com/yourusername/aid.git ~/.config/opencode
+```
+
+> **Note**: If you already have an `opencode` configuration, you may need to back it up or merge these files.
 
 ### 2. Create the symlink
 
-The symlink to `~/.local/bin/aid` should already be created. Verify with:
-
-```bash
-which aid
-```
-
-If not found, create it manually:
+Create a symlink to make the `aid` command available globally:
 
 ```bash
 mkdir -p ~/.local/bin

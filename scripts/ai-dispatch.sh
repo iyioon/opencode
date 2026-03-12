@@ -517,9 +517,30 @@ interactive_dispatch() {
 
     # Change to worktree and run OpenCode with interactive TUI
     cd "$worktree_path"
-    
-    # Run OpenCode with the dispatch agent in interactive TUI mode
-    opencode --agent dispatch
+
+    # Prepare an initial prompt that frames the session as an autonomous dispatch workflow.
+    # Without this, the user's free-text message is treated as casual conversation and the
+    # AI never completes the full workflow (commit → push → PR).
+    local initial_prompt
+    initial_prompt="You are running as an autonomous development agent in a dedicated git worktree.
+
+## Context
+
+- Worktree: ${worktree_path}
+- Target branch: ${default_branch}
+
+## Instructions
+
+Please ask the user what task they would like you to work on. Once they describe the task, execute the full development workflow autonomously:
+1. Understand and explore the codebase
+2. Plan and implement the changes (committing incrementally)
+3. Review your changes
+4. Push the branch and create a pull request
+
+Do not stop after implementation — complete the entire workflow through PR creation."
+
+    # Run OpenCode with the dispatch agent in interactive TUI mode, seeding with initial prompt
+    opencode --agent dispatch --prompt "$initial_prompt"
 
     log_success "Interactive session completed"
 }

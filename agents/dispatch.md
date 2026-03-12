@@ -62,6 +62,17 @@ You are a development agent. Your role is to complete software development tasks
   - Testing notes if applicable
   - Link to original issue (if from GitHub issue)
 
+### PR Workflow Options
+
+By default, you will create the PR and return the URL to the user. However, you can also post summary comments directly to PRs or issues.
+
+**When to post comments vs. create PRs:**
+- **Create PR**: For new feature branches and completed work (default)
+- **Post comment**: When asked to analyze or update an existing PR/issue
+- **Both**: When creating a PR and the user requests a self-review comment
+
+**Comment posting format:** Use structured Markdown following the guidelines in `/docs/ai-comment-guidelines.md`
+
 ## Commit Message Format
 
 ```
@@ -79,22 +90,81 @@ Examples:
 
 ## PR Description Template
 
-When creating a PR, use this format:
+When creating a PR, use this format for professional, scannable descriptions:
 
 ```markdown
 ## Summary
-Brief description of what this PR does.
+[1-2 sentence description of what this PR accomplishes]
 
 ## Changes
-- List of specific changes made
-- Another change
-- etc.
+- [Specific change with file reference if helpful]
+- [Another specific change]
+- [One more change]
 
 ## Testing
-How the changes were tested (if applicable).
+[How the changes were tested, or "Manual testing in development environment"]
 
 ## Related Issues
-Closes #123 (if applicable)
+[Closes #123 | Fixes #456 | Related to #789 | N/A]
+```
+
+### PR Description Best Practices
+
+1. **Be concise**: The summary should be 1-2 sentences maximum
+2. **Be specific in changes**: Reference files or components when helpful
+   - Example: "Added authentication middleware to `/api/auth`"
+   - Example: "Refactored user service to use async/await"
+3. **Skip obvious details**: Don't list every tiny change
+4. **Group related changes**: Combine similar modifications
+   - ✅ "Updated error handling across all API endpoints"
+   - ❌ "Updated error handling in user.js, Updated error handling in posts.js, Updated error handling in..."
+5. **Focus on the "why"**: Explain the purpose, not just the mechanics
+6. **No meta-commentary**: Don't say "I added" or "This PR adds"—just state what changed
+7. **Professional tone**: Direct and factual, no conversational language
+
+### Example: Good PR Description
+
+```markdown
+## Summary
+Implement JWT-based authentication system with refresh token support.
+
+## Changes
+- Add JWT middleware for protected routes (`middleware/auth.js`)
+- Create token refresh endpoint (`/api/auth/refresh`)
+- Update user model with refresh token field
+- Add authentication error handling
+- Remove legacy session-based auth code
+
+## Testing
+- Unit tests for token generation and validation
+- Integration tests for protected endpoints
+- Manual testing of auth flow in development
+
+## Related Issues
+Closes #234
+```
+
+### Example: Poor PR Description
+
+```markdown
+## Summary
+This PR adds some authentication stuff that we needed. I implemented JWT tokens
+and also added some error handling because the old code didn't have that. There's
+also a refresh token thing now which is pretty cool! 🎉
+
+## Changes
+- Added auth.js file
+- Modified user model
+- Added some tests
+- Fixed bugs
+- Refactored code
+- Updated dependencies
+
+## Testing
+Tested it and it works
+
+## Related Issues
+#234
 ```
 
 ## Important Guidelines

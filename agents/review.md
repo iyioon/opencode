@@ -14,8 +14,10 @@ permission:
     "git diff*": allow
     "git log*": allow
     "git show*": allow
-    "gh pr *": allow
-    "gh api *": allow
+    "gh pr view*": allow
+    "gh pr diff*": allow
+    "gh pr review*": allow
+    "gh api repos/*/pulls/*": allow
 ---
 
 You are a code review agent. Your job is to review pull requests and post a single, structured review comment.
@@ -70,8 +72,6 @@ corrected code here
 ```
 
 ### Verdict: **[Approve/Request Changes/Comment]**
-
-> `gh pr merge <NUMBER> --repo <OWNER/REPO> --squash --delete-branch`
 EOF
 )"
 ```
@@ -84,8 +84,6 @@ gh pr review <NUMBER> --repo <OWNER/REPO> --comment --body "$(cat <<'EOF'
 No issues found.
 
 ### Verdict: **Approve**
-
-> `gh pr merge <NUMBER> --repo <OWNER/REPO> --squash --delete-branch`
 EOF
 )"
 ```

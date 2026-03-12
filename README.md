@@ -14,13 +14,13 @@ Autonomous AI workflow system for OpenCode that handles tasks from start to PR c
 ## Quick Start
 
 ```bash
-# Interactive mode - opens OpenCode with initial prompt
+# Interactive mode - opens OpenCode TUI with initial prompt
 aid
 
-# Work on a GitHub issue
+# Direct mode - work on a GitHub issue (background execution)
 aid https://github.com/user/repo/issues/123
 
-# Work on a plain text task
+# Direct mode - work on a plain text task (background execution)
 aid "Add dark mode toggle to settings page"
 
 # List active sessions
@@ -38,16 +38,16 @@ aid cleanup --force
 
 ## How It Works
 
-**Interactive Mode:**
-1. **Launch**: Run `aid` with no arguments to open OpenCode
+**Interactive Mode (TUI):**
+1. **Launch**: Run `aid` with no arguments to open OpenCode TUI
 2. **Guided Input**: Initial prompt guides you to describe your task
 3. **Direct Work**: AI works directly in your current repository
-4. **Autonomous Flow**: AI implements, commits, reviews, and can create PR
+4. **Visual Interface**: Full OpenCode TUI experience with real-time updates
 
-**Task Mode (with arguments):**
+**Direct Mode (Background):**
 1. **Parse Input**: Detects GitHub issue URL or plain text task
 2. **Create Worktree**: Sets up isolated git worktree with `ai/` prefixed branch
-3. **Run OpenCode**: Launches OpenCode with dispatch agent and task prompt
+3. **Background Execution**: Runs OpenCode in non-TUI mode with minimal output
 4. **Autonomous Work**: Agent implements, commits, reviews, and creates PR
 5. **Cleanup**: Removes worktree and cleans state on completion
 

@@ -3,9 +3,9 @@
 # aid - Autonomous AI workflow for OpenCode
 #
 # Usage:
-#   aid                         Open OpenCode interactively for user to provide task
-#   aid <github-issue-url>      Work on a GitHub issue
-#   aid "task description"      Work on a plain text task
+#   aid                         Open OpenCode TUI interactively for user to provide task
+#   aid <github-issue-url>      Work on a GitHub issue (runs in background, no TUI)
+#   aid "task description"      Work on a plain text task (runs in background, no TUI)
 #   aid list                    List active dispatch sessions
 #   aid cleanup [--force]       Clean up orphaned sessions
 #   aid resume <session-id>     Resume a previous session
@@ -469,10 +469,10 @@ Please describe your task in detail. I can help you with:
 
 After you provide your initial task description, I'll review it and ask if you need any clarification or if there are additional requirements I should know about before I begin working."
 
-    # Change to source repo and run OpenCode with initial prompt
+    # Change to source repo and run OpenCode with interactive TUI
     cd "$source_repo"
     
-    # Run OpenCode with the dispatch agent (interactive TUI)
+    # Run OpenCode with the dispatch agent in interactive TUI mode
     opencode --agent dispatch --prompt "$initial_prompt"
 
     log_success "Interactive session completed"
@@ -608,8 +608,8 @@ Begin working on this task now."
 
     cd "$worktree_path"
 
-    # Run OpenCode with the dispatch agent (interactive TUI)
-    opencode --agent dispatch --prompt "$task_prompt"
+    # Run OpenCode in non-interactive mode with the dispatch agent
+    opencode run --agent dispatch --title "AI Task: $(echo "$task_description" | head -c 50)..." "$task_prompt" 2>/dev/null
 
     log_success "AI dispatch completed"
 }
@@ -649,23 +649,27 @@ usage() {
 ${BOLD}aid${NC} - Autonomous AI workflow for OpenCode
 
 ${BOLD}USAGE${NC}
-    aid                         Open OpenCode interactively for user to provide task
-    aid <github-issue-url>      Work on a GitHub issue
-    aid "task description"      Work on a plain text task
+    aid                         Open OpenCode TUI interactively for user to provide task
+    aid <github-issue-url>      Work on a GitHub issue (runs in background, no TUI)
+    aid "task description"      Work on a plain text task (runs in background, no TUI)
     aid list                    List active dispatch sessions
     aid cleanup [--force]       Clean up orphaned sessions
     aid resume <session-id>     Resume a previous session
     aid help                    Show this help message
     aid --version               Show version information
 
+${BOLD}MODES${NC}
+    ${BOLD}Interactive Mode${NC}   - Opens OpenCode TUI with guided prompts
+    ${BOLD}Direct Mode${NC}        - Runs task in background without TUI interface
+
 ${BOLD}EXAMPLES${NC}
-    # Interactive mode - opens OpenCode with initial prompt
+    # Interactive mode - opens OpenCode TUI with initial prompt
     aid
 
-    # Work on a GitHub issue
+    # Direct mode - work on a GitHub issue (background execution)
     aid https://github.com/user/repo/issues/123
 
-    # Work on a custom task
+    # Direct mode - work on a custom task (background execution)  
     aid "Add dark mode toggle to settings page"
 
     # List all sessions

@@ -1,33 +1,58 @@
 # Usage Guide
 
-## Interactive Mode
+## Interactive Mode (TUI)
 
-The simplest way to use aid is without any arguments:
+The simplest way to use aid is without any arguments - this opens the OpenCode TUI:
 
 ```bash
 # Navigate to your project
 cd /path/to/your/project
 
-# Start interactive mode
+# Start interactive mode with OpenCode TUI
 aid
 ```
 
 This will:
-1. Open OpenCode immediately in your current repository
+1. Open OpenCode TUI immediately in your current repository
 2. Present an initial prompt that guides you to describe your task
 3. Wait for you to type your task description directly in the OpenCode interface
-4. Work on the task once you provide details
+4. Provide full visual interface with real-time updates
+5. Work on the task once you provide details
 
 ### Benefits of Interactive Mode
 
+- **Visual Interface**: Full OpenCode TUI with syntax highlighting and real-time updates
 - **No setup needed**: Works directly in your current repository
 - **Guided experience**: Clear instructions on how to describe your task
-- **Immediate start**: No worktrees or session management overhead
+- **Real-time feedback**: Watch progress as the AI works
 - **Simple workflow**: Just run `aid` and start describing what you want
 
-## Task Mode
+## Direct Mode (Background)
 
-For predefined tasks, you can still use the traditional approaches:
+For predefined tasks, you can run aid with arguments to execute in background mode:
+
+```bash
+# Work on a GitHub issue (background execution)
+aid https://github.com/user/repo/issues/123
+
+# Work on a plain text task (background execution)
+aid "Add dark mode toggle to settings page"
+```
+
+This will:
+1. Create an isolated worktree for the task
+2. Run OpenCode in non-TUI mode with minimal output
+3. Execute the task autonomously in the background
+4. Clean up when complete
+
+### Benefits of Direct Mode
+
+- **No interruption**: Runs in background without taking over your terminal
+- **Isolation**: Uses worktrees to avoid affecting your current work
+- **Autonomous**: Requires no interaction once started
+- **Minimal output**: Suppresses most OpenCode output for clean execution
+
+## Task Mode
 
 ## Basic Usage
 
@@ -162,16 +187,18 @@ It follows a structured workflow:
 ### Choose the Right Mode
 
 ```bash
-# Use interactive mode for:
+# Use interactive mode (TUI) for:
 # - Exploratory tasks where you're not sure what you need
-# - When you want guided assistance in formulating your request
-# - Quick one-off tasks in your current repo
+# - When you want guided assistance and real-time visual feedback
+# - Quick one-off tasks where you want to watch progress
+# - Learning or debugging scenarios
 aid
 
-# Use task mode for:
+# Use direct mode (background) for:
 # - Well-defined tasks you can describe upfront
 # - GitHub issues with detailed requirements  
 # - Tasks that benefit from isolated worktrees
+# - When you want to continue other work while AI executes
 aid "Specific task description"
 aid https://github.com/owner/repo/issues/123
 ```

@@ -682,6 +682,7 @@ Review the PR comments and requested changes, then implement the necessary fixes
     # Fetch latest changes
     log_info "Fetching latest changes..."
     if [[ "$task_type" == "github_pr" ]]; then
+        # For PR tasks, worktree is based on the PR branch — default branch fetch failure is non-fatal
         git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch default branch, continuing anyway"
         git fetch origin "$branch_name" 2>/dev/null || die "Failed to fetch PR branch '${branch_name}' from origin. Ensure the branch exists remotely."
     else
@@ -693,7 +694,12 @@ Review the PR comments and requested changes, then implement the necessary fixes
     if [[ "$task_type" == "github_pr" ]]; then
         # For PR tasks: check out the existing PR branch so fixes go directly to the PR
         if git show-ref --verify --quiet "refs/heads/${branch_name}" 2>/dev/null; then
-            # Sync local branch to remote to avoid stale commits
+            # Refuse to sync if local branch has unpushed commits — avoids silent data loss
+            local ahead
+            ahead=$(git rev-list --count "origin/${branch_name}..refs/heads/${branch_name}" 2>/dev/null || echo 0)
+            if [[ "$ahead" -gt 0 ]]; then
+                die "Local branch '${branch_name}' is ${ahead} commit(s) ahead of origin. Aborting to prevent data loss."
+            fi
             git branch -f "$branch_name" "origin/${branch_name}" ||
                 log_warn "Could not reset local '${branch_name}' to origin; it may be stale"
             git worktree add "$worktree_path" "$branch_name" ||

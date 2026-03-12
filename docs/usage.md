@@ -1,8 +1,8 @@
 # Usage Guide
 
-## TUI Mode (Default)
+## TUI Mode
 
-All `aid` commands now run in TUI mode by default, providing a visual interface for all operations:
+All `aid` commands run in TUI mode, providing a visual interface for all operations:
 
 ```bash
 # Navigate to your project
@@ -32,33 +32,6 @@ This will:
 - **Real-time feedback**: Watch progress as the AI works
 - **Worktree isolation**: Each task runs in its own isolated worktree
 - **Interactive workflow**: Engage with the AI during the process
-
-## Background Mode (--background or -b)
-
-For automation or when you want headless execution, use the `--background` or `-b` flag:
-
-```bash
-# Work on a GitHub issue in background (headless)
-aid --background https://github.com/user/repo/issues/123
-aid -b https://github.com/user/repo/issues/123
-
-# Work on a plain text task in background
-aid -b "Add dark mode toggle to settings page"
-```
-
-This will:
-1. Create an isolated worktree for the task
-2. Run OpenCode in non-TUI mode with minimal output
-3. Execute the task autonomously in the background
-4. Clean up when complete
-
-### Benefits of Background Mode
-
-- **No interruption**: Runs in background without taking over your terminal
-- **Isolation**: Uses worktrees to avoid affecting your current work
-- **Autonomous**: Requires no interaction once started
-- **Minimal output**: Suppresses most OpenCode output for clean execution
-- **Automation-friendly**: Suitable for CI/CD pipelines and scripts
 
 ## Basic Usage
 
@@ -441,7 +414,7 @@ It focuses on:
 ### Choose the Right Mode
 
 ```bash
-# TUI Mode (default) is great for:
+# TUI Mode is great for:
 # - Interactive tasks where you want to watch progress
 # - When you want real-time visual feedback
 # - Quick tasks where you want immediate visibility
@@ -449,14 +422,6 @@ It focuses on:
 aid
 aid "Add dark mode toggle"
 aid https://github.com/owner/repo/issues/123
-
-# Background mode (--background or -b) is great for:
-# - Well-defined tasks that can run autonomously
-# - When you want to continue other work while AI executes
-# - Automation and CI/CD pipelines
-# - Batch processing multiple tasks
-aid -b "Specific task description"
-aid --background https://github.com/owner/repo/issues/123
 ```
 
 ### Write Clear Task Descriptions

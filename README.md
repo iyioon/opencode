@@ -4,8 +4,7 @@ A workflow automation tool for OpenCode that handles development tasks from star
 
 ## Features
 
-- **TUI Mode (Default)**: All commands run in OpenCode's visual TUI by default
-- **Background Mode**: Use `--background` or `-b` flag for headless execution
+- **TUI Mode**: All commands run in OpenCode's visual TUI
 - **GitHub Issue Integration**: Fetch and work on GitHub issues automatically
 - **GitHub PR Support**: Work on PRs to implement requested changes
 - **PR Review Mode**: Read-only review of PRs with automated feedback posting
@@ -20,27 +19,17 @@ A workflow automation tool for OpenCode that handles development tasks from star
 # Interactive mode - opens OpenCode TUI with initial prompt
 aid
 
-# TUI mode - work on a GitHub issue (default)
+# TUI mode - work on a GitHub issue
 aid https://github.com/user/repo/issues/123
 
-# Background mode - work on a GitHub issue headlessly
-aid --background https://github.com/user/repo/issues/123
-aid -b https://github.com/user/repo/issues/123
-
-# Work on a GitHub PR (implement requested changes, TUI mode)
+# Work on a GitHub PR (implement requested changes)
 aid https://github.com/user/repo/pull/456
 
-# Review a PR (TUI mode, default)
+# Review a PR
 aid review https://github.com/user/repo/pull/456
 
-# Review a PR in background mode
-aid review --background https://github.com/user/repo/pull/456
-
-# TUI mode - work on a plain text task (default)
+# TUI mode - work on a plain text task
 aid "Add dark mode toggle to settings page"
-
-# Background mode - work on a plain text task
-aid -b "Add dark mode toggle to settings page"
 
 # List active sessions
 aid list
@@ -98,20 +87,13 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 
 ## How It Works
 
-**TUI Mode (Default):**
+**TUI Mode:**
 1. **Launch**: Run any `aid` command to open OpenCode TUI
 2. **Visual Interface**: Full OpenCode TUI experience with real-time updates
 3. **Worktree Isolation**: Tasks run in isolated git worktrees for safety
 4. **Interactive Experience**: Watch progress and interact with the AI
 
-**Background Mode (--background or -b):**
-1. **Parse Input**: Detects GitHub issue/PR URL or plain text task
-2. **Create Worktree**: Sets up isolated git worktree with `aid/` prefixed branch
-3. **Headless Execution**: Runs OpenCode without TUI for automation
-4. **Automated Work**: Implements, commits, reviews, and creates PR
-5. **Cleanup**: Removes worktree and cleans state on completion
-
-### PR Review (`aid review [--background] <pr-url>`)
+### PR Review (`aid review <pr-url>`)
 
 1. **Fetch PR**: Gets PR details, diff, comments, and existing reviews
 2. **Run OpenCode**: Launches OpenCode with read-only `review` agent (TUI by default)

@@ -8,8 +8,6 @@
 #   aid <github-pr-url>              Work on a GitHub PR (TUI mode)
 #   aid "task description"           Work on a plain text task (TUI mode)
 #   aid review <pr-url>              Review a PR and post feedback (TUI mode, read-only)
-#   aid --background <task>          Run task in background (headless, no TUI)
-#   aid -b <github-issue-url>        Short form of --background
 #   aid list                         List active dispatch sessions
 #   aid cleanup [--failed|--all] [--force]  Clean up sessions
 #   aid resume <session-id>          Resume a previous session

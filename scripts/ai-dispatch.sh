@@ -110,7 +110,7 @@ extract_issue_number() {
 # Extract owner/repo from GitHub URL (works for both issues and PRs)
 extract_repo_path() {
     local url="$1"
-    echo "$url" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/(issues|pull)/[0-9]+.*|\1|'
+    echo "$url" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/[^/]+/[0-9]+.*|\1|'
 }
 
 # Get the current repository's GitHub owner/repo path

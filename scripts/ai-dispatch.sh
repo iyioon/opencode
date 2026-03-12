@@ -109,10 +109,67 @@ extract_issue_number() {
     echo "$url" | grep -oE '[0-9]+$'
 }
 
-# Extract owner/repo from GitHub URL
+# Extract owner/repo from GitHub URL (works for both issues and PRs)
 extract_repo_path() {
     local url="$1"
-    echo "$url" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/issues/[0-9]+|\1|'
+    echo "$url" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/(issues|pull)/[0-9]+.*|\1|'
+}
+
+# Get the current repository's GitHub owner/repo path
+get_current_repo_path() {
+    local remote_url
+
+    # Try to get the origin remote URL
+    remote_url=$(git config --get remote.origin.url 2>/dev/null) || return 1
+
+    # Extract owner/repo from various GitHub URL formats:
+    # - https://github.com/owner/repo.git
+    # - git@github.com:owner/repo.git
+    # - https://github.com/owner/repo
+    if [[ "$remote_url" =~ github\.com[:/]([^/]+/[^/]+)(\.git)?$ ]]; then
+        local repo_path="${BASH_REMATCH[1]}"
+        # Remove .git suffix if present
+        repo_path="${repo_path%.git}"
+        echo "$repo_path"
+        return 0
+    fi
+
+    return 1
+}
+
+# Validate that a GitHub URL belongs to the current repository
+validate_github_url_repo() {
+    local url="$1"
+    local url_repo current_repo
+
+    # Extract repo path from the provided URL
+    url_repo=$(extract_repo_path "$url")
+    if [[ -z "$url_repo" ]]; then
+        log_error "Failed to extract repository from URL: $url"
+        return 1
+    fi
+
+    # Get current repository's GitHub path
+    current_repo=$(get_current_repo_path)
+    if [[ -z "$current_repo" ]]; then
+        log_warn "Could not determine current repository's GitHub remote"
+        log_warn "Skipping repository validation"
+        return 0  # Allow to proceed if we can't determine current repo
+    fi
+
+    # Compare repo paths (case-insensitive)
+    if [[ "${url_repo,,}" != "${current_repo,,}" ]]; then
+        log_error "Repository mismatch!"
+        log_error "  URL points to:    ${url_repo}"
+        log_error "  Current repo is:  ${current_repo}"
+        log_error ""
+        log_error "This command would work on the wrong repository."
+        log_error "Please run this command from the correct repository."
+        return 1
+    fi
+
+    log_debug "Repository validation passed: $current_repo"
+    return 0
 }
 
 # Fetch issue details using gh CLI
@@ -482,6 +539,9 @@ review_pr() {
         die "Invalid PR URL. Expected: https://github.com/owner/repo/pull/123"
     fi
 
+    # Validate repository match
+    validate_github_url_repo "$pr_url" || die "Repository validation failed"
+
     local repo_path pr_number
     repo_path=$(echo "$pr_url" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/pull/[0-9]+|\1|')
     pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
@@ -553,6 +613,9 @@ dispatch() {
         task_type="github_issue"
         task_source="$input"
 
+        # Validate repository match
+        validate_github_url_repo "$input" || die "Repository validation failed"
+
         log_info "Fetching GitHub issue details..."
         issue_json=$(fetch_issue_details "$input")
 
@@ -572,6 +635,9 @@ Source: $input"
     elif is_github_pr_url "$input"; then
         task_type="github_pr"
         task_source="$input"
+
+        # Validate repository match
+        validate_github_url_repo "$input" || die "Repository validation failed"
 
         local repo_path pr_number
         repo_path=$(echo "$input" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/pull/[0-9]+|\1|')

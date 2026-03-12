@@ -588,7 +588,7 @@ ${BOLD}REQUIREMENTS${NC}
     - gh (GitHub CLI, for issue fetching)
     - opencode
     - jq
-    - tmux (optional, for new pane mode)
+
 
 ${BOLD}FILES${NC}
     ~/.config/opencode/dispatch/    Session state files

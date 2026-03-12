@@ -521,6 +521,12 @@ interactive_dispatch() {
     cd "$worktree_path"
     
     # Run OpenCode with the dispatch agent in interactive TUI mode
+    echo ""
+    log_info "Starting OpenCode TUI..."
+    log_info "You are now in an isolated worktree."
+    log_info "Type your task description to begin working."
+    echo ""
+    
     opencode --agent dispatch
 
     log_success "Interactive session completed"

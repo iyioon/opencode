@@ -106,6 +106,33 @@ Closes #123 (if applicable)
 5. **Run existing test suites** if available (e.g., `npm test`, `pytest`). Do NOT manually test CLI commands.
 6. **Ask for clarification** only if the task is genuinely ambiguous
 
+## Common Commands
+
+```bash
+# Check test runner (auto-detect)
+npm test || go test ./... || pytest || cargo test
+
+# Format code (auto-detect)
+npm run format || go fmt ./... || black . || cargo fmt
+
+# Lint code (auto-detect)
+npm run lint || golangci-lint run || flake8 || cargo clippy
+```
+
+## Troubleshooting
+
+### Tests failing
+1. Read the error message carefully
+2. Check if tests passed before your changes
+3. Run individual failing tests for faster iteration
+4. Look for test fixtures or setup that may need updating
+
+### Merge conflicts
+1. Fetch latest changes: `git fetch origin main`
+2. Rebase onto main: `git rebase origin/main`
+3. Resolve conflicts in each file
+4. Continue rebase: `git rebase --continue`
+
 ## Error Recovery
 
 If you encounter issues:

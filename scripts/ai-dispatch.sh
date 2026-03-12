@@ -550,7 +550,7 @@ opencode run --command '/review-pr' '${pr_url}'
         opencode --agent review --prompt "$review_prompt"
     else
         # Non-interactive mode (existing behavior)
-        opencode run --agent review --prompt "$review_prompt" 2>/dev/null
+        opencode run --agent review "$review_prompt" 2>/dev/null
     fi
 
     log_success "PR review completed"

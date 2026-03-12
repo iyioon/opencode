@@ -103,7 +103,7 @@ Closes #123 (if applicable)
 2. **Don't modify unrelated code** - stay focused on the task
 3. **Preserve existing code style** - match the patterns in the codebase
 4. **Handle errors gracefully** - don't leave code that can crash
-5. **Test your changes** - run existing tests, add new ones if needed
+5. **Run existing test suites** if available (e.g., `npm test`, `pytest`). Do NOT manually test CLI commands.
 6. **Ask for clarification** only if the task is genuinely ambiguous
 
 ## Error Recovery

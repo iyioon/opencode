@@ -11,7 +11,7 @@
 #   aid --background <task>          Run task in background (headless, no TUI)
 #   aid -b <github-issue-url>        Short form of --background
 #   aid list                         List active dispatch sessions
-#   aid cleanup [--force]            Clean up orphaned sessions
+#   aid cleanup [--failed|--all] [--force]  Clean up sessions
 #   aid resume <session-id>          Resume a previous session
 #
 # Environment:
@@ -85,12 +85,6 @@ require_cmd() {
 # Generate a unique session ID
 generate_session_id() {
     date +%Y%m%d-%H%M%S-$$
-}
-
-# Sanitize string for use in branch names
-sanitize_branch_name() {
-    local input="$1"
-    echo "$input" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | sed -E 's/^-|-$//g' | cut -c1-50
 }
 
 # ==============================================================================
@@ -197,28 +191,6 @@ read_state() {
     fi
 }
 
-# Check if a branch is already being worked on
-check_existing_session() {
-    local branch_name="$1"
-
-    for state_file in "${DISPATCH_DIR}"/*.json; do
-        [[ -f "$state_file" ]] || continue
-
-        local existing_branch existing_status
-        existing_branch=$(jq -r '.branch_name' "$state_file" 2>/dev/null || echo "")
-        existing_status=$(jq -r '.status' "$state_file" 2>/dev/null || echo "")
-
-        if [[ "$existing_branch" == "$branch_name" && "$existing_status" == "running" ]]; then
-            local session_id
-            session_id=$(jq -r '.session_id' "$state_file")
-            log_warn "Branch '$branch_name' is already being worked on (session: $session_id)"
-            return 0
-        fi
-    done
-
-    return 1
-}
-
 # ==============================================================================
 # Cleanup Functions
 # ==============================================================================
@@ -288,12 +260,18 @@ cleanup() {
 }
 
 # Clean up orphaned sessions
-cleanup_orphans() {
-    local force="${1:-false}"
+cleanup_sessions() {
+    local mode="${1:-}" # "orphaned", "failed", or "all"
+    local force="${2:-false}"
     local cleaned=0
     local found=0
 
-    log_info "Scanning for orphaned sessions..."
+    case "$mode" in
+        orphaned) log_info "Scanning for orphaned sessions..." ;;
+        failed) log_info "Scanning for failed sessions..." ;;
+        all) log_info "Scanning for all cleanable sessions..." ;;
+        *) die "Invalid cleanup mode: $mode" ;;
+    esac
 
     for state_file in "${DISPATCH_DIR}"/*.json; do
         [[ -f "$state_file" ]] || continue
@@ -306,50 +284,59 @@ cleanup_orphans() {
         branch_name=$(jq -r '.branch_name' "$state_file" 2>/dev/null || echo "")
         source_repo=$(jq -r '.source_repo' "$state_file" 2>/dev/null || echo "")
 
-        # Skip completed/failed sessions
-        if [[ "$status" != "running" ]]; then
-            continue
+        local should_clean=false
+        local reason=""
+
+        # Check if this session should be cleaned based on mode
+        if [[ "$status" == "failed" && ("$mode" == "failed" || "$mode" == "all") ]]; then
+            should_clean=true
+            reason="failed"
+        elif [[ "$status" == "running" ]]; then
+            # Check if process is still running
+            if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+                log_debug "Session $session_id (PID $pid) is still running"
+            elif [[ "$mode" == "orphaned" || "$mode" == "all" ]]; then
+                should_clean=true
+                reason="orphaned"
+            fi
         fi
 
-        # Check if process is still running
-        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-            log_debug "Session $session_id (PID $pid) is still running"
-            continue
-        fi
+        if [[ "$should_clean" == "true" ]]; then
+            found=$((found + 1))
+            log_info "Found $reason session: $session_id"
 
-        found=$((found + 1))
-        log_info "Found orphaned session: $session_id"
+            if [[ "$force" == "true" ]]; then
+                # Set cleanup variables and run cleanup
+                CLEANUP_STATE_FILE="$state_file"
+                CLEANUP_WORKTREE_PATH="$worktree_path"
+                CLEANUP_BRANCH_NAME="$branch_name"
+                CLEANUP_SOURCE_REPO="$source_repo"
 
-        if [[ "$force" == "true" ]]; then
-            # Set cleanup variables and run cleanup
-            CLEANUP_STATE_FILE="$state_file"
-            CLEANUP_WORKTREE_PATH="$worktree_path"
-            CLEANUP_BRANCH_NAME="$branch_name"
-            CLEANUP_SOURCE_REPO="$source_repo"
+                update_state_status "$state_file" "$reason"
+                cleanup
+                cleaned=$((cleaned + 1))
 
-            update_state_status "$state_file" "orphaned"
-            cleanup
-            cleaned=$((cleaned + 1))
-
-            # Reset cleanup variables
-            CLEANUP_STATE_FILE=""
-            CLEANUP_WORKTREE_PATH=""
-            CLEANUP_BRANCH_NAME=""
-            CLEANUP_SOURCE_REPO=""
-        else
-            echo "  Session: $session_id"
-            echo "  Branch: $branch_name"
-            echo "  Worktree: $worktree_path"
-            echo ""
+                # Reset cleanup variables
+                CLEANUP_STATE_FILE=""
+                CLEANUP_WORKTREE_PATH=""
+                CLEANUP_BRANCH_NAME=""
+                CLEANUP_SOURCE_REPO=""
+            else
+                echo "  Session: $session_id"
+                echo "  Status: $reason"
+                echo "  Branch: $branch_name"
+                echo "  Worktree: $worktree_path"
+                echo ""
+            fi
         fi
     done
 
     if [[ "$force" == "true" ]]; then
-        log_success "Cleaned up $cleaned orphaned session(s)"
+        log_success "Cleaned up $cleaned session(s)"
     elif [[ $found -eq 0 ]]; then
-        log_success "No orphaned sessions found"
+        log_success "No sessions to clean up"
     else
-        log_info "Run 'aid cleanup --force' to remove these $found session(s)"
+        log_info "Run with --force to remove these $found session(s)"
     fi
 }
 
@@ -421,7 +408,7 @@ list_sessions() {
 # ==============================================================================
 
 interactive_dispatch() {
-    local source_repo
+    local source_repo session_id branch_name worktree_path
 
     # Get current repo path
     source_repo=$(git rev-parse --show-toplevel 2>/dev/null) || die "Not in a git repository"
@@ -433,57 +420,51 @@ interactive_dispatch() {
     log_debug "Source repo: $source_repo"
     log_debug "Default branch: $default_branch"
 
-    log_info "Starting interactive OpenCode session..."
-    log_info "Repository: $source_repo"
-    log_info "Target branch for PR: $default_branch"
+    # Generate session ID and branch name
+    session_id=$(generate_session_id)
+    branch_name="aid/${session_id}"
+    worktree_path="${WORKTREES_DIR}/${session_id}"
 
-    # Prepare the initial prompt that waits for user input
-    local initial_prompt
-    initial_prompt="Welcome! I'm ready to help you with any development task.
+    log_info "Session ID: $session_id"
+    log_info "Branch: $branch_name"
+    log_info "Worktree: $worktree_path"
 
-## What would you like me to work on?
+    # Dry run check
+    if [[ "${AID_DRY_RUN:-}" == "1" ]]; then
+        log_warn "Dry run mode - not executing"
+        return 0
+    fi
 
-Please describe your task in detail. I can help you with:
+    # Fetch latest changes
+    log_info "Fetching latest changes..."
+    git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
 
-- **New Features**: Add functionality to your application
-- **Bug Fixes**: Resolve issues and problems
-- **Refactoring**: Improve code structure and organization  
-- **Documentation**: Update README files, add code comments
-- **Testing**: Write unit tests, integration tests
-- **Configuration**: Set up build tools, CI/CD, etc.
+    # Create worktree with new branch
+    log_info "Creating worktree..."
+    git worktree add -b "$branch_name" "$worktree_path" "origin/${default_branch}" 2>/dev/null ||
+        git worktree add -b "$branch_name" "$worktree_path" "$default_branch" ||
+        die "Failed to create worktree"
 
-## Examples of good task descriptions:
+    # Create state file
+    local state_file
+    state_file=$(create_state_file "$session_id" "$branch_name" "$worktree_path" "interactive" "tui" "Interactive session" "$source_repo")
 
-- \"Add a dark mode toggle to the settings page\"
-- \"Fix the bug where users can't submit forms with special characters\"
-- \"Refactor the authentication module to use JWT tokens\"
-- \"Add input validation to the user registration form\"
-- \"Write unit tests for the payment processing service\"
+    # Set cleanup variables
+    CLEANUP_STATE_FILE="$state_file"
+    CLEANUP_WORKTREE_PATH="$worktree_path"
+    CLEANUP_BRANCH_NAME="$branch_name"
+    CLEANUP_SOURCE_REPO="$source_repo"
 
-## Repository Information
+    # Set up cleanup trap
+    trap cleanup EXIT SIGTERM SIGHUP SIGINT
 
-- **Current repository**: $source_repo
-- **Target branch for PR**: $default_branch
-- **Working directory**: $(pwd)
+    log_success "Worktree created successfully"
 
-**Instructions**: Once you provide your task description, I'll:
-1. Analyze the requirements carefully
-2. Plan the implementation approach  
-3. Make the necessary changes
-4. Write/update tests if applicable
-5. Commit changes with clear messages
-6. Self-review my work
-7. Create a pull request
-
-**Please describe what you'd like me to work on:**
-
-After you provide your initial task description, I'll review it and ask if you need any clarification or if there are additional requirements I should know about before I begin working."
-
-    # Change to source repo and run OpenCode with interactive TUI
-    cd "$source_repo"
+    # Change to worktree and run OpenCode with interactive TUI
+    cd "$worktree_path"
     
     # Run OpenCode with the dispatch agent in interactive TUI mode
-    opencode --agent dispatch --prompt "$initial_prompt"
+    opencode --agent dispatch
 
     log_success "Interactive session completed"
 }
@@ -521,28 +502,13 @@ review_pr() {
     log_info "PR: #${pr_number} - ${pr_title}"
     log_info "Author: ${pr_author} (+${pr_additions}/-${pr_deletions} lines)"
 
-    # Prepare review prompt
+    # Prepare review prompt - minimal context, agent knows the workflow
     local review_prompt
-    review_prompt="You are reviewing a GitHub Pull Request.
+    review_prompt="Review this PR: ${pr_url}
 
-## PR Details
-
-**Title**: ${pr_title}
-**Author**: ${pr_author}
-**URL**: ${pr_url}
-**Changes**: +${pr_additions}/-${pr_deletions} lines
-
-## Your Task
-
-1. Analyze the PR diff and understand the changes
-2. Review for code quality, bugs, and improvements
-3. Post a structured review comment using the gh CLI
-
-Run this command now to start your review:
-
-\`\`\`bash
-opencode run --command '/review-pr' '${pr_url}'
-\`\`\`"
+- Title: ${pr_title}
+- Author: ${pr_author}
+- Changes: +${pr_additions}/-${pr_deletions} lines"
 
     # Run OpenCode with review agent
     log_info "Starting code review..."
@@ -578,6 +544,10 @@ dispatch() {
     log_debug "Source repo: $source_repo"
     log_debug "Default branch: $default_branch"
 
+    # Generate session ID first - used for branch naming
+    session_id=$(generate_session_id)
+    branch_name="aid/${session_id}"
+
     # Parse input - GitHub issue, PR, or plain text
     if is_github_issue_url "$input"; then
         task_type="github_issue"
@@ -590,7 +560,6 @@ dispatch() {
         issue_number=$(extract_issue_number "$input")
         issue_title=$(echo "$issue_json" | jq -r '.title')
 
-        branch_name="aid/issue-${issue_number}"
         task_description="GitHub Issue #${issue_number}: ${issue_title}
 
 $(echo "$issue_json" | jq -r '.body // "No description provided"')
@@ -615,7 +584,6 @@ Source: $input"
             die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
         pr_title=$(echo "$pr_json" | jq -r '.title')
 
-        branch_name="ai/pr-${pr_number}"
         task_description="GitHub PR #${pr_number}: ${pr_title}
 
 $(echo "$pr_json" | jq -r '.body // "No description provided"')
@@ -631,23 +599,12 @@ Review the PR comments and requested changes, then implement the necessary fixes
     else
         task_type="plain_text"
         task_source="cli"
-
-        local sanitized
-        sanitized=$(sanitize_branch_name "$input")
-        branch_name="aid/task-${sanitized}-$(date +%H%M%S)"
         task_description="$input"
 
         log_info "Task: $input"
     fi
 
-    # Check for existing session with same branch
-    if check_existing_session "$branch_name"; then
-        die "A session is already working on this branch. Use 'aid list' to see active sessions."
-    fi
-
-    # Generate session ID
-    session_id=$(generate_session_id)
-    worktree_path="${WORKTREES_DIR}/${branch_name//\//-}"
+    worktree_path="${WORKTREES_DIR}/${session_id}"
 
     log_info "Session ID: $session_id"
     log_info "Branch: $branch_name"
@@ -684,32 +641,16 @@ Review the PR comments and requested changes, then implement the necessary fixes
 
     log_success "Worktree created successfully"
 
-    # Prepare the task prompt
+    # Prepare the task prompt - just the task and context, agent already knows the workflow
     local task_prompt
-    task_prompt="You are working on the following task in an isolated git worktree.
-
-## Task Description
+    task_prompt="## Task
 
 ${task_description}
 
-## Instructions
+## Context
 
-1. Analyze the task requirements carefully
-2. Plan your implementation approach
-3. Implement the changes systematically
-4. Write/update tests if applicable
-5. Commit your changes with clear, conventional commit messages (feat:, fix:, docs:, etc.)
-6. Self-review your work for quality and completeness
-7. Create a pull request against the '${default_branch}' branch
-
-## Important
-
-- You are in worktree: ${worktree_path}
-- Target branch for PR: ${default_branch}
-- Make atomic commits as you progress
-- If you encounter blockers, document them in the PR description
-
-Begin working on this task now."
+- Worktree: ${worktree_path}
+- Target branch: ${default_branch}"
 
     # Change to worktree and run OpenCode
     log_info "Starting OpenCode in worktree..."
@@ -766,7 +707,7 @@ view_session() {
     state_json=$(read_state "$session_id") || die "Session not found: $session_id"
 
     # Extract fields
-    local branch_name worktree_path status created_at task_type task_source task_description source_repo
+    local branch_name worktree_path status created_at task_type task_source task_description source_repo pid
     branch_name=$(echo "$state_json" | jq -r '.branch_name')
     worktree_path=$(echo "$state_json" | jq -r '.worktree_path')
     status=$(echo "$state_json" | jq -r '.status')
@@ -775,6 +716,7 @@ view_session() {
     task_source=$(echo "$state_json" | jq -r '.task_source')
     task_description=$(echo "$state_json" | jq -r '.task_description')
     source_repo=$(echo "$state_json" | jq -r '.source_repo')
+    pid=$(echo "$state_json" | jq -r '.pid')
 
     # Color status
     local status_colored
@@ -833,7 +775,15 @@ view_session() {
 
     # --- Prompt to open in OpenCode ---
     if [[ -d "$worktree_path" ]]; then
-        printf '%b' "Open session in OpenCode? [y/N] "
+        # Check if session is actively running
+        local is_running=false
+        if [[ "$status" == "running" && -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+            is_running=true
+            printf '%b\n' "${YELLOW}Warning: Session is still running (PID: $pid)${NC}"
+            printf '%b' "Attach anyway? This may cause conflicts. [y/N] "
+        else
+            printf '%b' "Open session in OpenCode? [y/N] "
+        fi
         read -r response
         if [[ "$response" =~ ^[Yy]$ ]]; then
             cd "$worktree_path"
@@ -861,10 +811,16 @@ ${BOLD}USAGE${NC}
     aid review --background <pr-url> Review a PR in background mode
     aid list                         List active dispatch sessions
     aid view <session-id>            View session details and optionally resume
-    aid cleanup [--force]            Clean up orphaned sessions
+    aid cleanup [options]            Clean up sessions (see options below)
     aid resume <session-id>          Resume a previous session
     aid help                         Show this help message
     aid --version                    Show version information
+
+${BOLD}CLEANUP OPTIONS${NC}
+    --force, -f                 Actually remove sessions (without this, just lists them)
+    --failed                    Clean up failed sessions
+    --all                       Clean up both orphaned and failed sessions
+    (default)                   Clean up orphaned sessions (running but process died)
 
 ${BOLD}MODES${NC}
     ${BOLD}TUI Mode (default)${NC}  - Opens OpenCode TUI with visual interface
@@ -902,8 +858,14 @@ ${BOLD}EXAMPLES${NC}
     # View session details
     aid view 20260313-143052-12345
 
-    # Clean up orphaned worktrees
+    # Clean up orphaned sessions (process died)
     aid cleanup --force
+
+    # Clean up failed sessions
+    aid cleanup --failed --force
+
+    # Clean up all (orphaned + failed)
+    aid cleanup --all --force
 
 ${BOLD}WORKFLOW${NC}
     1. AI creates PR via dispatch    -> PR opened
@@ -974,11 +936,22 @@ main() {
             list_sessions
             ;;
         cleanup|clean)
+            local mode="orphaned"
             local force="false"
-            if [[ "${2:-}" == "--force" || "${2:-}" == "-f" ]]; then
-                force="true"
-            fi
-            cleanup_orphans "$force"
+            
+            # Parse cleanup flags
+            shift
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --force|-f) force="true" ;;
+                    --failed) mode="failed" ;;
+                    --all) mode="all" ;;
+                    *) die "Unknown cleanup option: $1" ;;
+                esac
+                shift
+            done
+            
+            cleanup_sessions "$mode" "$force"
             ;;
         resume)
             if [[ -z "${2:-}" ]]; then

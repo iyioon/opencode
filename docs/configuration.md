@@ -10,7 +10,7 @@
 | `~/.config/opencode/dispatch/` | Session state files (JSON) |
 | `~/.config/opencode/worktrees/` | Git worktrees for tasks |
 
-## Customizing the Dispatch Agent
+## Customizing the Development Agent
 
 Edit `~/.config/opencode/agents/dispatch.md` to customize the agent behavior.
 
@@ -62,13 +62,13 @@ permission:
 
 ## Custom Commands
 
-The dispatch workflow uses three commands:
+The development workflow uses three commands:
 
 ### /work-task
 Starts working on the assigned task. Edit `~/.config/opencode/commands/work-task.md`.
 
 ### /review-work
-Self-reviews changes before PR. Edit `~/.config/opencode/commands/review-work.md`.
+Reviews changes before PR. Edit `~/.config/opencode/commands/review-work.md`.
 
 ### /create-pr
 Creates the pull request. Edit `~/.config/opencode/commands/create-pr.md`.
@@ -92,15 +92,15 @@ This allows OpenCode to work in the worktrees directory.
 ## Branch Naming
 
 Default patterns:
-- GitHub issues: `ai/issue-<number>`
-- Plain text: `ai/task-<sanitized>-<timestamp>`
+- GitHub issues: `aid/issue-<number>`
+- Plain text: `aid/task-<sanitized>-<timestamp>`
 
 To change the prefix, edit the script:
 
 ```bash
-# Find these lines and change "ai/" to your preferred prefix
-branch_name="ai/issue-${issue_number}"
-branch_name="ai/task-${sanitized}-$(date +%H%M%S)"
+# Find these lines and change "aid/" to your preferred prefix
+branch_name="aid/issue-${issue_number}"
+branch_name="aid/task-${sanitized}-$(date +%H%M%S)"
 ```
 
 ## Target Branch for PRs
@@ -116,8 +116,8 @@ Session state is stored in JSON:
 ```json
 {
   "session_id": "20250312-143022-1234",
-  "branch_name": "ai/issue-123",
-  "worktree_path": "/Users/you/.config/opencode/worktrees/ai-issue-123",
+  "branch_name": "aid/issue-123",
+  "worktree_path": "/Users/you/.config/opencode/worktrees/aid-issue-123",
   "task_type": "github_issue",
   "task_source": "https://github.com/owner/repo/issues/123",
   "task_description": "...",

@@ -1,6 +1,6 @@
-# aid - AI Dispatch for OpenCode
+# aid - Automated Development for OpenCode
 
-Autonomous AI workflow system for OpenCode that handles tasks from start to PR creation, with built-in PR review capabilities.
+A workflow automation tool for OpenCode that handles development tasks from start to pull request creation, with built-in PR review capabilities.
 
 ## Features
 
@@ -9,9 +9,9 @@ Autonomous AI workflow system for OpenCode that handles tasks from start to PR c
 - **GitHub PR Support**: Work on PRs to implement requested changes
 - **PR Review Mode**: Read-only review of PRs with automated feedback posting
 - **Plain Text Tasks**: Work on any task described in plain text
-- **Git Worktree Isolation**: Each task runs in its own worktree
-- **Automatic Cleanup**: Graceful cleanup on exit, including unexpected closures
-- **Session Management**: Track, list, and resume dispatch sessions
+- **Git Worktree Isolation**: Each task runs in its own isolated worktree
+- **Automatic Cleanup**: Clean shutdown and resource management
+- **Session Management**: Track, list, and resume work sessions
 
 ## Quick Start
 
@@ -93,14 +93,14 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 **Interactive Mode (TUI):**
 1. **Launch**: Run `aid` with no arguments to open OpenCode TUI
 2. **Guided Input**: Initial prompt guides you to describe your task
-3. **Direct Work**: AI works directly in your current repository
+3. **Direct Work**: Works directly in your current repository
 4. **Visual Interface**: Full OpenCode TUI experience with real-time updates
 
 **Direct Mode (Background):**
 1. **Parse Input**: Detects GitHub issue/PR URL or plain text task
-2. **Create Worktree**: Sets up isolated git worktree with `ai/` prefixed branch
+2. **Create Worktree**: Sets up isolated git worktree with `aid/` prefixed branch
 3. **Background Execution**: Runs OpenCode in non-TUI mode with minimal output
-4. **Autonomous Work**: Agent implements, commits, reviews, and creates PR
+4. **Automated Work**: Implements, commits, reviews, and creates PR
 5. **Cleanup**: Removes worktree and cleans state on completion
 
 ### PR Review (`aid review [--interactive] <pr-url>`)
@@ -138,17 +138,17 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 ```
 ~/.config/opencode/
 ├── scripts/
-│   └── ai-dispatch.sh      # Main dispatch script (aid)
+│   └── ai-dispatch.sh      # Main script (aid)
 ├── agents/
-│   ├── dispatch.md         # Autonomous dispatch agent
+│   ├── dispatch.md         # Development workflow agent
 │   └── review.md           # Read-only review agent
 ├── commands/
 │   ├── work-task.md        # Start working on task
-│   ├── review-work.md      # Self-review changes
+│   ├── review-work.md      # Review changes
 │   ├── create-pr.md        # Create pull request
 │   └── review-pr.md        # Review a PR (read-only)
 ├── skills/
-│   └── dispatch-workflow/  # Dispatch workflow skill
+│   └── dispatch-workflow/  # Development workflow skill
 ├── dispatch/               # Session state files
 ├── worktrees/              # Git worktrees for tasks
 └── docs/                   # Documentation

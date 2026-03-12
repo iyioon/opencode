@@ -1,11 +1,11 @@
 ---
 name: dispatch-workflow
-description: Autonomous task completion workflow for git worktrees - guides through understanding, planning, implementing, reviewing, and creating PRs
+description: Development workflow for git worktrees - guides through understanding, planning, implementing, reviewing, and creating PRs
 ---
 
-# Dispatch Workflow
+# Development Workflow
 
-A skill for autonomous task completion in git worktrees. Use this skill when working on isolated tasks dispatched via `ai-dispatch`.
+A skill for task completion in git worktrees. Use this skill when working on isolated tasks.
 
 ## Workflow Steps
 
@@ -30,7 +30,7 @@ A skill for autonomous task completion in git worktrees. Use this skill when wor
 - Add or update tests for new functionality
 - Update documentation if needed
 
-### 5. Self-Review
+### 5. Review
 Before creating a PR, review your changes:
 - Run the test suite if available (`npm test`, `go test`, `pytest`, etc.)
 - Run linting/formatting tools if configured

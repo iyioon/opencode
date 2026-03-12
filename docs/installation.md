@@ -9,7 +9,7 @@ Before installing aid, ensure you have:
    git --version
    ```
 
-2. **GitHub CLI** (for fetching issue details)
+2. **GitHub CLI** (for accessing GitHub issues)
    ```bash
    # Install
    brew install gh
@@ -30,7 +30,7 @@ Before installing aid, ensure you have:
 
 ## Installation Steps
 
-### 1. The files are already in place
+### 1. Files are already in place
 
 If you're reading this, the installation has already created:
 - `~/.config/opencode/scripts/ai-dispatch.sh`

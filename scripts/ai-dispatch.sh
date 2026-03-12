@@ -587,7 +587,7 @@ dispatch() {
         issue_number=$(extract_issue_number "$input")
         issue_title=$(echo "$issue_json" | jq -r '.title')
 
-        branch_name="ai/issue-${issue_number}"
+        branch_name="aid/issue-${issue_number}"
         task_description="GitHub Issue #${issue_number}: ${issue_title}
 
 $(echo "$issue_json" | jq -r '.body // "No description provided"')
@@ -631,7 +631,7 @@ Review the PR comments and requested changes, then implement the necessary fixes
 
         local sanitized
         sanitized=$(sanitize_branch_name "$input")
-        branch_name="ai/task-${sanitized}-$(date +%H%M%S)"
+        branch_name="aid/task-${sanitized}-$(date +%H%M%S)"
         task_description="$input"
 
         log_info "Task: $input"

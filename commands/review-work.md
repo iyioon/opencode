@@ -1,10 +1,10 @@
 ---
-description: Self-review all changes before creating a pull request
+description: Review all changes before creating a pull request
 agent: dispatch
 subtask: false
 ---
 
-## Self-Review Checklist
+## Review Checklist
 
 Review all your changes thoroughly before creating a PR.
 

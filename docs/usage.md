@@ -62,17 +62,17 @@ This will:
 # Navigate to your project
 cd /path/to/your/project
 
-# Dispatch with a GitHub issue URL
+# Start working on a GitHub issue
 aid https://github.com/owner/repo/issues/123
 ```
 
-The agent will:
+The tool will:
 1. Fetch the issue title and description
-2. Create a branch named `ai/issue-123`
-3. Set up a worktree in `~/.config/opencode/worktrees/ai-issue-123`
-4. Work on the task autonomously
+2. Create a branch named `aid/issue-123`
+3. Set up a worktree in `~/.config/opencode/worktrees/aid-issue-123`
+4. Work on the task automatically
 5. Create commits as it progresses
-6. Self-review the changes
+6. Review the changes
 7. Create a PR against the main branch
 
 ### Working on a GitHub PR
@@ -84,7 +84,7 @@ aid https://github.com/owner/repo/pull/456
 
 The agent will:
 1. Fetch the PR details and review comments
-2. Create a branch named `ai/pr-456`
+2. Create a branch named `aid/pr-456`
 3. Implement the requested changes
 4. Push commits to the PR branch
 
@@ -266,12 +266,12 @@ aid list
 
 Output:
 ```
-Active AI Dispatch Sessions
+Active Development Sessions
 ───────────────────────────────────────────────────────────────────────────────────────
 SESSION              STATUS       BRANCH                              CREATED
 ───────────────────────────────────────────────────────────────────────────────────────
-20250312-143022-1234 running      ai/issue-123                        2025-03-12T14:30:22Z
-20250312-150145-5678 completed    ai/task-add-dark-mode-150145        2025-03-12T15:01:45Z
+20250312-143022-1234 running      aid/issue-123                       2025-03-12T14:30:22Z
+20250312-150145-5678 completed    aid/task-add-dark-mode-150145       2025-03-12T15:01:45Z
 ───────────────────────────────────────────────────────────────────────────────────────
 Total: 2 session(s)
 ```
@@ -301,8 +301,8 @@ Session: 20250312-143022-1234
 Status:        running
 Created:       2025-03-12T14:30:22Z
 Type:          github_issue
-Branch:        ai/issue-123
-Worktree:      /Users/you/.config/opencode/worktrees/ai-issue-123
+Branch:        aid/issue-123
+Worktree:      /Users/you/.config/opencode/worktrees/aid-issue-123
 
 Task Description
 ─────────────────────────────────────────────
@@ -351,16 +351,16 @@ AID_DEBUG=1 aid review https://github.com/owner/repo/pull/123
 
 ## Workflow Details
 
-### What Happens During Dispatch
+### What Happens During Execution
 
 1. **Input Parsing**
    - Detects if input is a GitHub issue/PR URL or plain text
    - For GitHub issues/PRs, fetches details via `gh` CLI
 
 2. **Branch Creation**
-   - GitHub issues: `ai/issue-<number>`
-   - GitHub PRs: `ai/pr-<number>`
-   - Plain text: `ai/task-<sanitized-description>-<timestamp>`
+   - GitHub issues: `aid/issue-<number>`
+   - GitHub PRs: `aid/pr-<number>`
+   - Plain text: `aid/task-<sanitized-description>-<timestamp>`
 
 3. **Worktree Setup**
    - Creates worktree in `~/.config/opencode/worktrees/`
@@ -371,8 +371,8 @@ AID_DEBUG=1 aid review https://github.com/owner/repo/pull/123
    - Tracks session ID, branch, worktree path, status
 
 5. **OpenCode Execution**
-   - Runs `opencode --agent dispatch` with task prompt
-   - Agent works autonomously through the task
+   - Runs `opencode --agent dispatch` with task description
+   - Follows structured development workflow
 
 6. **Cleanup**
    - On exit (normal or interrupted), removes worktree
@@ -394,9 +394,9 @@ AID_DEBUG=1 aid review https://github.com/owner/repo/pull/123
    - Agent posts structured comment via `gh pr review`
    - No worktree created, no cleanup needed
 
-### The Dispatch Agent
+### The Development Agent
 
-The dispatch agent is configured for autonomous work:
+The development agent is configured for automated work:
 - Full edit permissions (no approval prompts)
 - Full bash access including git and gh commands
 - Temperature set to 0.3 for consistent behavior
@@ -405,8 +405,8 @@ It follows a structured workflow:
 1. Understand the task
 2. Plan the implementation
 3. Implement incrementally with commits
-4. Self-review all changes
-5. Create a PR
+4. Review all changes
+5. Create a pull request
 
 ### The Review Agent
 

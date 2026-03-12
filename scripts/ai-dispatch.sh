@@ -635,13 +635,17 @@ Source: $input"
 
         log_info "Fetching PR #${pr_number} details..."
 
-        local pr_json pr_title pr_branch_name
-        pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files,headRefName 2>/dev/null) ||
+        local pr_json pr_title pr_branch_name pr_is_fork
+        pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files,headRefName,isCrossRepository 2>/dev/null) ||
             die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
         pr_title=$(echo "$pr_json" | jq -r '.title')
         pr_branch_name=$(echo "$pr_json" | jq -r '.headRefName')
         [[ -z "$pr_branch_name" || "$pr_branch_name" == "null" ]] &&
             die "Could not determine PR branch name from PR #${pr_number}"
+        pr_is_fork=$(echo "$pr_json" | jq -r '.isCrossRepository // false')
+        if [[ "$pr_is_fork" == "true" ]]; then
+            die "Fork PRs are not yet supported. Check out the branch manually and re-run."
+        fi
 
         # Use the PR's actual branch instead of creating a new aid/ branch
         branch_name="$pr_branch_name"
@@ -700,6 +704,10 @@ Review the PR comments and requested changes, then implement the necessary fixes
             if [[ "$ahead" -gt 0 ]]; then
                 die "Local branch '${branch_name}' is ${ahead} commit(s) ahead of origin. Aborting to prevent data loss."
             fi
+            # Refuse to reset if the branch is already checked out in another worktree
+            if git worktree list --porcelain | grep -q "branch refs/heads/${branch_name}$"; then
+                die "Branch '${branch_name}' is already checked out in another worktree. Remove it first."
+            fi
             git branch -f "$branch_name" "origin/${branch_name}" ||
                 log_warn "Could not reset local '${branch_name}' to origin; it may be stale"
             git worktree add "$worktree_path" "$branch_name" ||
@@ -734,27 +742,18 @@ Review the PR comments and requested changes, then implement the necessary fixes
     log_success "Worktree created successfully"
 
     # Prepare the task prompt - just the task and context, agent already knows the workflow
+    local branch_context=""
+    [[ "$task_type" == "github_pr" ]] && branch_context=$'\n'"- Branch: ${branch_name} (push directly to update the PR)"
+
     local task_prompt
-    if [[ "$task_type" == "github_pr" ]]; then
-        task_prompt="## Task
+    task_prompt="## Task
 
 ${task_description}
 
 ## Context
 
-- Worktree: ${worktree_path}
-- Branch: ${branch_name} (push directly to update the PR)
+- Worktree: ${worktree_path}${branch_context}
 - Target branch: ${default_branch}"
-    else
-        task_prompt="## Task
-
-${task_description}
-
-## Context
-
-- Worktree: ${worktree_path}
-- Target branch: ${default_branch}"
-    fi
 
     # Change to worktree and run OpenCode
     log_info "Starting OpenCode in worktree..."

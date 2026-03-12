@@ -757,7 +757,7 @@ view_session() {
     state_json=$(read_state "$session_id") || die "Session not found: $session_id"
 
     # Extract fields
-    local branch_name worktree_path status created_at task_type task_source task_description source_repo
+    local branch_name worktree_path status created_at task_type task_source task_description source_repo pid
     branch_name=$(echo "$state_json" | jq -r '.branch_name')
     worktree_path=$(echo "$state_json" | jq -r '.worktree_path')
     status=$(echo "$state_json" | jq -r '.status')
@@ -766,6 +766,7 @@ view_session() {
     task_source=$(echo "$state_json" | jq -r '.task_source')
     task_description=$(echo "$state_json" | jq -r '.task_description')
     source_repo=$(echo "$state_json" | jq -r '.source_repo')
+    pid=$(echo "$state_json" | jq -r '.pid')
 
     # Color status
     local status_colored
@@ -824,7 +825,15 @@ view_session() {
 
     # --- Prompt to open in OpenCode ---
     if [[ -d "$worktree_path" ]]; then
-        printf '%b' "Open session in OpenCode? [y/N] "
+        # Check if session is actively running
+        local is_running=false
+        if [[ "$status" == "running" && -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+            is_running=true
+            printf '%b\n' "${YELLOW}Warning: Session is still running (PID: $pid)${NC}"
+            printf '%b' "Attach anyway? This may cause conflicts. [y/N] "
+        else
+            printf '%b' "Open session in OpenCode? [y/N] "
+        fi
         read -r response
         if [[ "$response" =~ ^[Yy]$ ]]; then
             cd "$worktree_path"

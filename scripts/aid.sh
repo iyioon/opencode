@@ -650,7 +650,7 @@ ${BOLD}USAGE${NC}
   aid new "task description"     Create new task and start working
   aid new <issue-url>            Create task from GitHub issue
   aid status                     List tasks by status
-  aid <task-id>                  Address PR feedback (auto-merges if approved)
+  aid <task-id>                  Address PR feedback or conflicts (auto-merges if approved)
   aid <pr-url>                   Address PR feedback by PR URL
   aid view <task-id>             Open PR in browser or show task info
   aid approve <task-id>          Merge PR and cleanup

@@ -18,6 +18,7 @@
 # Environment:
 #   AID_DEBUG=1                      Enable debug output
 #   AID_DRY_RUN=1                    Show what would be done without executing
+#   AID_NO_CONTEXT=1                 Disable task context injection
 
 set -euo pipefail
 
@@ -1367,20 +1368,37 @@ tasks_list() {
                     phase="done"
                 fi
                 merged_count=$((merged_count + 1))
-            elif [[ "$http_status" == "200" && -n "$pr_url" && "$pr_url" != "null" && "$phase" != "done" ]]; then
-                # Branch still exists — enrich with live PR state
-                local pr_number="" live_pr_state=""
-                pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
-                if [[ -n "$pr_number" ]]; then
-                    live_pr_state=$(gh api "repos/${task_repo}/pulls/${pr_number}" \
+            elif [[ "$http_status" == "200" && "$phase" != "done" ]]; then
+                # Branch still exists — enrich with live PR state.
+                # If pr_url is already stored use it directly; otherwise search
+                # GitHub for an open PR against this branch (covers the case where
+                # the agent created a PR but forgot to update task.json).
+                local live_pr_number="" live_pr_url="" live_pr_state=""
+                if [[ -n "$pr_url" && "$pr_url" != "null" ]]; then
+                    live_pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
+                else
+                    # Search for any open PR whose head matches this branch
+                    local found_pr
+                    found_pr=$(gh api "repos/${task_repo}/pulls?state=open&head=${task_repo%%/*}:${branch_name}" \
+                        --jq '.[0] | select(. != null) | "\(.number) \(.html_url)"' 2>/dev/null || echo "")
+                    if [[ -n "$found_pr" ]]; then
+                        live_pr_number=$(echo "$found_pr" | awk '{print $1}')
+                        live_pr_url=$(echo "$found_pr" | awk '{print $2}')
+                    fi
+                fi
+                if [[ -n "$live_pr_number" ]]; then
+                    live_pr_state=$(gh api "repos/${task_repo}/pulls/${live_pr_number}" \
                         --jq '.state' 2>/dev/null || echo "")
                 fi
                 if [[ "$live_pr_state" == "open" && "$phase" == "research" ]]; then
                     # PR exists but phase wasn't advanced — fix it
                     phase="review"
                     status="active"
-                    # Persist the correction silently
+                    # Persist the correction silently (also store PR info if we discovered it)
                     update_task_phase "$task_id" "review" 2>/dev/null || true
+                    if [[ -n "$live_pr_url" && -n "$live_pr_number" ]]; then
+                        update_task_pr "$task_id" "$live_pr_number" "$live_pr_url" 2>/dev/null || true
+                    fi
                 fi
             fi
         fi

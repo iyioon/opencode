@@ -225,7 +225,7 @@ This allows the review agent to verify that the implementation matches the origi
 |----------|-------------|
 | `AID_DEBUG=1` | Enable debug output |
 | `AID_DRY_RUN=1` | Show what would be done without executing |
-| `AID_NO_CONTEXT=1` | Disable task context injection |
+| `AID_NO_CONTEXT=1` | Disable task context injection for this run |
 
 ## License
 

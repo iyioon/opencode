@@ -156,7 +156,7 @@ aid review https://github.com/owner/repo/pull/123
 | Aspect | `aid review <pr-url>` | `aid <pr-url>` |
 |--------|----------------------|----------------|
 | **Mode** | Read-only | Full access |
-| **Creates worktree** | No | Yes |
+| **Creates worktree** | Yes (detached HEAD, for `git grep`/`git show`) | Yes |
 | **Edits files** | No | Yes |
 | **Creates commits** | No | Yes |
 | **Posts PR comment** | Yes | No (creates commits) |

@@ -404,7 +404,6 @@ build_task_context_block() {
     [[ -n "$task_json" ]] && phase=$(echo "$task_json" | jq -r '.phase // "unknown"')
 
     local block=""
-    block+="---"$'\n'
     block+="## Resuming task: ${task_id} (phase: ${phase})"$'\n'$'\n'
 
     if [[ -n "$context_md" ]]; then
@@ -423,7 +422,7 @@ build_task_context_block() {
         block+="${plan_md}"$'\n'$'\n'
     fi
 
-    block+="---"$'\n'
+    block+="---"$'\n'$'\n'
     echo "$block"
 }
 
@@ -881,7 +880,7 @@ ${pr_diff}
         log_warn "Fork PR detected — skipping worktree; git grep/show will reflect your current branch"
         log_info "Starting code review..."
         cd "$source_repo"
-        opencode run --agent review "$review_prompt"
+        opencode --agent review --prompt "$review_prompt"
     else
         # Fetch the PR branch from origin
         log_info "Fetching PR branch '${pr_branch_name}'..."
@@ -904,7 +903,7 @@ ${pr_diff}
         log_info "Starting code review..."
 
         cd "$worktree_path"
-        opencode run --agent review "$review_prompt"
+        opencode --agent review --prompt "$review_prompt"
     fi
 
     log_success "PR review completed"
@@ -1172,7 +1171,7 @@ ${task_description}
     cd "$worktree_path"
 
     # Run OpenCode with the dispatch agent (TUI mode)
-    opencode run --agent dispatch "$task_prompt"
+    opencode --agent dispatch --prompt "$task_prompt"
 
     log_success "AI dispatch completed"
 }

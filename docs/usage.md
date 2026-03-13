@@ -236,6 +236,93 @@ Or switch to the review agent and ask directly:
 
 ---
 
+## Task Context System
+
+`aid` automatically creates a persistent context directory for each task that survives across sessions. This lets the agent resume research, skip re-discovering codebase patterns, and pick up an implementation plan where it left off.
+
+### Directory layout
+
+```
+~/.config/opencode/tasks/<task-id>/
+├── task.json      # Metadata: phase, branch, repo, PR info
+├── context.md     # Agent-written research notes (codebase patterns, constraints, decisions)
+└── plan.md        # Structured implementation plan (agent-written, user-editable)
+```
+
+### Phase lifecycle
+
+```
+research → plan → implement → review → done
+```
+
+| Phase | What happens |
+|-------|-------------|
+| `research` | Agent explores the codebase, writes `context.md` |
+| `plan` | Agent writes `plan.md` with a step-by-step checklist |
+| `implement` | Agent executes the plan, makes commits |
+| `review` | Agent self-reviews before PR creation |
+| `done` | PR has been created/merged |
+
+The current phase is stored in `task.json` and injected into the agent's prompt on every `aid` run.
+
+### How context injection works
+
+On the **first** run of a task, the agent receives the task description plus a note about the context directory where it should write its research and plan. On **subsequent** runs for the same branch, any previously written `context.md` and `plan.md` are prepended to the prompt:
+
+```
+---
+## Resuming task: aid-20250312-143022-1234 (phase: implement)
+
+### Previous Research (context.md)
+<contents of context.md>
+
+### Implementation Plan (plan.md)
+<contents of plan.md>
+
+---
+## Task
+...
+```
+
+Set `AID_NO_CONTEXT=1` to disable context injection for a specific run.
+
+### Review with task context
+
+When `aid review <pr-url>` is called, `aid` looks up the task context for that PR's branch. If found, the context is included in the review prompt so the agent can:
+- Verify the implementation matches the original plan
+- Skip flagging decisions that were already considered
+- Catch deviations from the agreed approach
+
+### Managing task contexts
+
+```bash
+# List all task contexts
+aid tasks
+
+# Show task metadata + context.md + plan.md
+aid tasks view aid-20250312-143022-1234
+
+# Edit the plan before implementation starts
+aid tasks edit aid-20250312-143022-1234 plan.md
+
+# Edit research notes
+aid tasks edit aid-20250312-143022-1234 context.md
+
+# Manually set the phase
+aid tasks phase aid-20250312-143022-1234 implement
+
+# List tasks eligible for cleanup (branches merged/deleted on remote)
+aid tasks cleanup --merged
+
+# Clean up those tasks (removes task context directories)
+aid tasks cleanup --merged --force
+
+# Remove all task contexts
+aid tasks cleanup --all --force
+```
+
+---
+
 ## Managing Sessions
 
 ### List Active Sessions
@@ -341,6 +428,7 @@ git fetch --prune
 |----------|-------------|
 | `AID_DEBUG=1` | Enable verbose debug output |
 | `AID_DRY_RUN=1` | Show what would happen without executing |
+| `AID_NO_CONTEXT=1` | Disable task context injection for this run |
 
 Example:
 ```bash

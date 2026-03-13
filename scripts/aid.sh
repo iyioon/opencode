@@ -25,7 +25,7 @@ set -euo pipefail
 # Version
 # ==============================================================================
 
-readonly VERSION="0.1.0"
+readonly VERSION="0.2.0"
 
 # ==============================================================================
 # Configuration
@@ -34,6 +34,7 @@ readonly VERSION="0.1.0"
 readonly OPENCODE_CONFIG_DIR="${HOME}/.config/opencode"
 readonly DISPATCH_DIR="${OPENCODE_CONFIG_DIR}/dispatch"
 readonly WORKTREES_DIR="${OPENCODE_CONFIG_DIR}/worktrees"
+readonly TASKS_DIR="${OPENCODE_CONFIG_DIR}/tasks"
 
 # Colors for output (bash 3.2 compatible)
 RED=$(printf '\033[0;31m')
@@ -247,6 +248,207 @@ read_state() {
     else
         return 1
     fi
+}
+
+# ==============================================================================
+# Task Context Management
+# ==============================================================================
+
+# Derive a stable task ID from a branch name or issue number.
+# Examples:
+#   aid/20260313-143052-12345  -> aid-20260313-143052-12345
+#   feature/my-thing           -> feature-my-thing
+#   issue-42                   -> issue-42  (already slug-safe)
+derive_task_id() {
+    local branch="$1"
+    # Replace slashes with hyphens; trim leading/trailing hyphens
+    echo "$branch" | tr '/' '-' | sed 's/^-*//;s/-*$//'
+}
+
+# Return the task directory for a given task ID
+task_dir() {
+    local task_id="$1"
+    echo "${TASKS_DIR}/${task_id}"
+}
+
+# Return the current task ID based on the worktree's branch (or "" if none)
+# Usage: current_task_id [worktree_path]
+current_task_id_for_worktree() {
+    local worktree_path="${1:-$(pwd)}"
+    local branch
+    branch=$(git -C "$worktree_path" symbolic-ref --short HEAD 2>/dev/null) || return 1
+    derive_task_id "$branch"
+}
+
+# Create task context directory + task.json for a new task.
+# Returns the task directory path.
+create_task_context() {
+    local task_id="$1"
+    local branch_name="$2"
+    local repo="$3"    # owner/repo
+    local pr_number="${4:-}"
+    local pr_url="${5:-}"
+
+    local tdir
+    tdir=$(task_dir "$task_id")
+    mkdir -p "$tdir"
+
+    # Only create task.json if it doesn't exist (don't overwrite existing context)
+    if [[ ! -f "${tdir}/task.json" ]]; then
+        cat > "${tdir}/task.json" <<EOF
+{
+  "id": "${task_id}",
+  "branch": "${branch_name}",
+  "repo": "${repo}",
+  "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "phase": "research",
+  "pr_number": ${pr_number:-null},
+  "pr_url": ${pr_url:+\"$pr_url\"},
+  "status": "active"
+}
+EOF
+        # Fix null-handling: if pr_url was empty the heredoc produced a bare word
+        # Re-write with proper null if needed
+        if [[ -z "$pr_url" ]]; then
+            local tmp
+            tmp=$(mktemp)
+            jq '.pr_url = null' "${tdir}/task.json" > "$tmp" && mv "$tmp" "${tdir}/task.json"
+        fi
+        if [[ -z "$pr_number" ]]; then
+            local tmp
+            tmp=$(mktemp)
+            jq '.pr_number = null' "${tdir}/task.json" > "$tmp" && mv "$tmp" "${tdir}/task.json"
+        fi
+    fi
+
+    echo "$tdir"
+}
+
+# Update a field in task.json
+update_task_json() {
+    local task_id="$1"
+    local key="$2"
+    local value="$3"   # raw jq value (strings must be pre-quoted)
+
+    local tfile
+    tfile="$(task_dir "$task_id")/task.json"
+    [[ -f "$tfile" ]] || return 1
+
+    local tmp
+    tmp=$(mktemp)
+    jq --argjson v "$value" ".${key} = \$v" "$tfile" > "$tmp" && mv "$tmp" "$tfile"
+}
+
+# Update task phase
+update_task_phase() {
+    local task_id="$1"
+    local phase="$2"
+    update_task_json "$task_id" "phase" "\"${phase}\""
+}
+
+# Attach a PR number + URL to a task (called after PR creation)
+update_task_pr() {
+    local task_id="$1"
+    local pr_number="$2"
+    local pr_url="$3"
+
+    local tfile
+    tfile="$(task_dir "$task_id")/task.json"
+    [[ -f "$tfile" ]] || return 1
+
+    local tmp
+    tmp=$(mktemp)
+    jq --argjson n "$pr_number" --arg u "$pr_url" \
+        '.pr_number = $n | .pr_url = $u | .phase = "review" | .status = "active"' \
+        "$tfile" > "$tmp" && mv "$tmp" "$tfile"
+}
+
+# Mark a task as done
+complete_task() {
+    local task_id="$1"
+    update_task_json "$task_id" "phase" '"done"'
+    update_task_json "$task_id" "status" '"done"'
+}
+
+# Build the context injection block for prompts.
+# Returns "" if no task context exists.
+build_task_context_block() {
+    local task_id="$1"
+    local tdir
+    tdir=$(task_dir "$task_id")
+
+    [[ -d "$tdir" ]] || return 0
+
+    local task_json=""
+    local context_md=""
+    local plan_md=""
+    local phase="unknown"
+
+    [[ -f "${tdir}/task.json" ]] && task_json=$(cat "${tdir}/task.json")
+    [[ -f "${tdir}/context.md" ]] && context_md=$(cat "${tdir}/context.md")
+    [[ -f "${tdir}/plan.md" ]] && plan_md=$(cat "${tdir}/plan.md")
+
+    # Nothing useful yet
+    if [[ -z "$task_json" && -z "$context_md" && -z "$plan_md" ]]; then
+        return 0
+    fi
+
+    [[ -n "$task_json" ]] && phase=$(echo "$task_json" | jq -r '.phase // "unknown"')
+
+    local block=""
+    block+="---"$'\n'
+    block+="## Resuming task: ${task_id} (phase: ${phase})"$'\n'$'\n'
+
+    if [[ -n "$context_md" ]]; then
+        local line_count
+        line_count=$(echo "$context_md" | wc -l | tr -d ' ')
+        block+="### Previous Research (context.md)"
+        if (( line_count > 200 )); then
+            block+=" ⚠️  context.md exceeds 200 lines (${line_count} lines) — consider summarising"
+        fi
+        block+=$'\n'
+        block+="${context_md}"$'\n'$'\n'
+    fi
+
+    if [[ -n "$plan_md" ]]; then
+        block+="### Implementation Plan (plan.md)"$'\n'
+        block+="${plan_md}"$'\n'$'\n'
+    fi
+
+    block+="---"$'\n'
+    echo "$block"
+}
+
+# Look up a task ID by PR URL or PR head branch
+find_task_by_pr() {
+    local pr_url="${1:-}"
+    local pr_branch="${2:-}"
+
+    [[ -d "$TASKS_DIR" ]] || return 1
+
+    for tfile in "${TASKS_DIR}"/*/task.json; do
+        [[ -f "$tfile" ]] || continue
+
+        if [[ -n "$pr_url" ]]; then
+            local stored_url
+            stored_url=$(jq -r '.pr_url // ""' "$tfile" 2>/dev/null)
+            if [[ "$stored_url" == "$pr_url" ]]; then
+                jq -r '.id' "$tfile"
+                return 0
+            fi
+        fi
+
+        if [[ -n "$pr_branch" ]]; then
+            local stored_branch
+            stored_branch=$(jq -r '.branch // ""' "$tfile" 2>/dev/null)
+            if [[ "$stored_branch" == "$pr_branch" ]]; then
+                jq -r '.id' "$tfile"
+                return 0
+            fi
+        fi
+    done
+
+    return 1
 }
 
 # ==============================================================================
@@ -596,7 +798,21 @@ review_pr() {
 
     # Build the enriched review prompt
     local review_prompt
-    review_prompt="Review PR #${pr_number}: ${pr_url}
+
+    # --- Task context injection ---
+    local task_context_block=""
+    if [[ "${AID_NO_CONTEXT:-}" != "1" ]]; then
+        local matched_task_id
+        matched_task_id=$(find_task_by_pr "$pr_url" "$pr_branch_name" 2>/dev/null || echo "")
+        if [[ -n "$matched_task_id" ]]; then
+            task_context_block=$(build_task_context_block "$matched_task_id")
+            log_debug "Injecting task context for: $matched_task_id"
+        fi
+    fi
+
+    if [[ -n "$task_context_block" ]]; then
+        review_prompt="${task_context_block}
+Review PR #${pr_number}: ${pr_url}
 
 Title: ${pr_title}
 Author: ${pr_author}
@@ -615,6 +831,27 @@ ${reviews_text}
 \`\`\`diff
 ${pr_diff}
 \`\`\`"
+    else
+        review_prompt="Review PR #${pr_number}: ${pr_url}
+
+Title: ${pr_title}
+Author: ${pr_author}
+Changes: +${pr_additions}/-${pr_deletions} lines
+
+## Description
+${pr_body:-"(no description provided)"}
+
+## Prior Comments
+${comments_text}
+
+## Prior Reviews
+${reviews_text}
+
+## Diff
+\`\`\`diff
+${pr_diff}
+\`\`\`"
+    fi
 
     # Dry run check
     if [[ "${AID_DRY_RUN:-}" == "1" ]]; then
@@ -837,19 +1074,50 @@ Review the PR comments and requested changes, then implement the necessary fixes
 
     log_success "Worktree created successfully"
 
+    # --- Task context (persistent across sessions) ---
+    local task_id repo_path_for_task
+    task_id=$(derive_task_id "$branch_name")
+    repo_path_for_task=$(get_current_repo_path 2>/dev/null || echo "")
+
+    if [[ "${AID_NO_CONTEXT:-}" != "1" ]]; then
+        local tdir
+        tdir=$(create_task_context "$task_id" "$branch_name" "$repo_path_for_task")
+        log_debug "Task context dir: $tdir"
+    fi
+
+    # Build context injection block (empty string if no prior context)
+    local context_block=""
+    if [[ "${AID_NO_CONTEXT:-}" != "1" ]]; then
+        context_block=$(build_task_context_block "$task_id")
+    fi
+
     # Prepare the task prompt - just the task and context, agent already knows the workflow
     local extra_context=""
     [[ "$task_type" == "github_pr" ]] && extra_context=$'\n'"- Branch: ${branch_name} (push directly to update the PR)"
 
     local task_prompt
-    task_prompt="## Task
+    if [[ -n "$context_block" ]]; then
+        task_prompt="${context_block}
+## Task
 
 ${task_description}
 
 ## Context
 
 - Worktree: ${worktree_path}
-- Target branch: ${default_branch}${extra_context}"
+- Target branch: ${default_branch}${extra_context}
+- Task context dir: ${TASKS_DIR}/${task_id} (write research notes to context.md, implementation plan to plan.md)"
+    else
+        task_prompt="## Task
+
+${task_description}
+
+## Context
+
+- Worktree: ${worktree_path}
+- Target branch: ${default_branch}${extra_context}
+- Task context dir: ${TASKS_DIR}/${task_id} (write research notes to context.md, implementation plan to plan.md)"
+    fi
 
     # Change to worktree and run OpenCode
     log_info "Starting OpenCode in worktree..."
@@ -986,6 +1254,273 @@ view_session() {
 }
 
 # ==============================================================================
+# Tasks Command — list/view/edit/phase/cleanup task contexts
+# ==============================================================================
+
+tasks_list() {
+    local count=0
+
+    local col_id=40
+    local col_phase=12
+    local col_status=10
+    local col_branch=35
+    local total_width=$((col_id + col_phase + col_status + col_branch))
+    local separator
+    separator=$(printf '%*s' "$total_width" '' | tr ' ' '─')
+
+    echo ""
+    printf '%b\n' "${BOLD}Aid Task Contexts${NC}"
+    echo "$separator"
+    printf "%-${col_id}s %-${col_phase}s %-${col_status}s %-${col_branch}s\n" \
+        "TASK ID" "PHASE" "STATUS" "BRANCH"
+    echo "$separator"
+
+    [[ -d "$TASKS_DIR" ]] || { echo "No tasks found"; echo ""; return; }
+
+    for tfile in "${TASKS_DIR}"/*/task.json; do
+        [[ -f "$tfile" ]] || continue
+
+        local task_id phase status branch_name
+        task_id=$(jq -r '.id // "unknown"' "$tfile" 2>/dev/null)
+        phase=$(jq -r '.phase // "unknown"' "$tfile" 2>/dev/null)
+        status=$(jq -r '.status // "unknown"' "$tfile" 2>/dev/null)
+        branch_name=$(jq -r '.branch // "unknown"' "$tfile" 2>/dev/null)
+
+        # Truncate long task IDs
+        if [[ ${#task_id} -gt $((col_id - 2)) ]]; then
+            task_id="${task_id:0:$((col_id - 5))}..."
+        fi
+        # Truncate branch
+        if [[ ${#branch_name} -gt $((col_branch - 2)) ]]; then
+            branch_name="${branch_name:0:$((col_branch - 5))}..."
+        fi
+
+        # Color phase
+        local phase_colored
+        case "$phase" in
+            research) phase_colored="${CYAN}${phase}${NC}" ;;
+            plan)     phase_colored="${YELLOW}${phase}${NC}" ;;
+            implement) phase_colored="${BLUE}${phase}${NC}" ;;
+            review)   phase_colored="${YELLOW}${phase}${NC}" ;;
+            done)     phase_colored="${GREEN}${phase}${NC}" ;;
+            *)        phase_colored="${NC}${phase}${NC}" ;;
+        esac
+
+        printf "%-${col_id}s %-${col_phase}b %-${col_status}s %-${col_branch}s\n" \
+            "$task_id" "$phase_colored" "$status" "$branch_name"
+        count=$((count + 1))
+    done
+
+    echo "$separator"
+    if [[ $count -eq 0 ]]; then
+        echo "No task contexts found"
+    else
+        echo "Total: $count task(s)"
+    fi
+    echo ""
+}
+
+tasks_view() {
+    local task_id="$1"
+    local tdir
+    tdir=$(task_dir "$task_id")
+
+    if [[ ! -d "$tdir" ]]; then
+        die "Task not found: $task_id  (looked in: $tdir)"
+    fi
+
+    echo ""
+    printf '%b\n' "${BOLD}Task: ${task_id}${NC}"
+    printf '%s\n' "─────────────────────────────────────────────"
+
+    if [[ -f "${tdir}/task.json" ]]; then
+        local phase status branch repo pr_url created
+        phase=$(jq -r '.phase // "unknown"' "${tdir}/task.json")
+        status=$(jq -r '.status // "unknown"' "${tdir}/task.json")
+        branch=$(jq -r '.branch // "unknown"' "${tdir}/task.json")
+        repo=$(jq -r '.repo // "unknown"' "${tdir}/task.json")
+        pr_url=$(jq -r '.pr_url // ""' "${tdir}/task.json")
+        created=$(jq -r '.created // "unknown"' "${tdir}/task.json")
+
+        printf "%-12s %s\n" "Phase:" "$phase"
+        printf "%-12s %s\n" "Status:" "$status"
+        printf "%-12s %s\n" "Branch:" "$branch"
+        printf "%-12s %s\n" "Repo:" "$repo"
+        printf "%-12s %s\n" "Created:" "$created"
+        [[ -n "$pr_url" && "$pr_url" != "null" ]] && printf "%-12s %s\n" "PR:" "$pr_url"
+    fi
+
+    echo ""
+
+    if [[ -f "${tdir}/context.md" ]]; then
+        local line_count
+        line_count=$(wc -l < "${tdir}/context.md" | tr -d ' ')
+        printf '%b\n' "${BOLD}context.md${NC} (${line_count} lines)"
+        printf '%s\n' "─────────────────────────────────────────────"
+        if (( line_count > 200 )); then
+            printf '%b\n' "${YELLOW}⚠  context.md exceeds 200 lines — consider asking the agent to summarise it${NC}"
+        fi
+        cat "${tdir}/context.md"
+        echo ""
+    else
+        printf '%b\n' "${YELLOW}context.md not yet written${NC}"
+        echo ""
+    fi
+
+    if [[ -f "${tdir}/plan.md" ]]; then
+        local plan_lines
+        plan_lines=$(wc -l < "${tdir}/plan.md" | tr -d ' ')
+        printf '%b\n' "${BOLD}plan.md${NC} (${plan_lines} lines)"
+        printf '%s\n' "─────────────────────────────────────────────"
+        cat "${tdir}/plan.md"
+        echo ""
+    else
+        printf '%b\n' "${YELLOW}plan.md not yet written${NC}"
+        echo ""
+    fi
+}
+
+tasks_edit() {
+    local task_id="$1"
+    local file="${2:-plan.md}"   # default to plan.md
+    local tdir
+    tdir=$(task_dir "$task_id")
+
+    if [[ ! -d "$tdir" ]]; then
+        die "Task not found: $task_id"
+    fi
+
+    local editor="${VISUAL:-${EDITOR:-vi}}"
+    "$editor" "${tdir}/${file}"
+}
+
+tasks_phase() {
+    local task_id="$1"
+    local new_phase="${2:-}"
+
+    local valid_phases="research plan implement review done"
+    if [[ -z "$new_phase" ]]; then
+        die "Usage: aid tasks phase <task-id> <phase>  (phases: ${valid_phases})"
+    fi
+
+    # Validate phase
+    local valid=false
+    for p in $valid_phases; do
+        [[ "$new_phase" == "$p" ]] && valid=true && break
+    done
+    $valid || die "Invalid phase '${new_phase}'. Valid phases: ${valid_phases}"
+
+    local tdir
+    tdir=$(task_dir "$task_id")
+    [[ -d "$tdir" ]] || die "Task not found: $task_id"
+
+    update_task_phase "$task_id" "$new_phase"
+    log_success "Phase updated: $task_id → $new_phase"
+}
+
+tasks_cleanup() {
+    local mode="${1:-merged}"  # "merged" or "all"
+    local force="${2:-false}"
+    local cleaned=0
+    local found=0
+
+    [[ -d "$TASKS_DIR" ]] || { log_info "No tasks directory found"; return; }
+
+    for tfile in "${TASKS_DIR}"/*/task.json; do
+        [[ -f "$tfile" ]] || continue
+
+        local task_id branch status
+        task_id=$(jq -r '.id // ""' "$tfile" 2>/dev/null)
+        branch=$(jq -r '.branch // ""' "$tfile" 2>/dev/null)
+        status=$(jq -r '.status // ""' "$tfile" 2>/dev/null)
+
+        [[ -z "$task_id" ]] && continue
+
+        local should_clean=false
+        local reason=""
+
+        if [[ "$mode" == "all" ]]; then
+            should_clean=true
+            reason="all"
+        elif [[ "$mode" == "merged" ]]; then
+            # Check if the branch has been merged (no longer exists on remote)
+            if [[ -n "$branch" ]]; then
+                if ! git ls-remote --heads origin "$branch" 2>/dev/null | grep -q .; then
+                    should_clean=true
+                    reason="branch deleted/merged"
+                fi
+            fi
+        fi
+
+        if [[ "$should_clean" == "true" ]]; then
+            found=$((found + 1))
+            local tdir
+            tdir=$(task_dir "$task_id")
+            log_info "Found task to clean (${reason}): $task_id"
+
+            if [[ "$force" == "true" ]]; then
+                rm -rf "$tdir"
+                log_success "Removed: $tdir"
+                cleaned=$((cleaned + 1))
+            else
+                echo "  Task: $task_id"
+                echo "  Branch: $branch"
+                echo "  Reason: $reason"
+                echo ""
+            fi
+        fi
+    done
+
+    if [[ "$force" == "true" ]]; then
+        log_success "Cleaned up $cleaned task context(s)"
+    elif [[ $found -eq 0 ]]; then
+        log_success "No task contexts to clean up"
+    else
+        log_info "Run with --force to remove these $found task context(s)"
+    fi
+}
+
+tasks_cmd() {
+    local subcmd="${1:-list}"
+    shift || true
+
+    case "$subcmd" in
+        list|ls|"")
+            tasks_list
+            ;;
+        view|show)
+            [[ -z "${1:-}" ]] && die "Usage: aid tasks view <task-id>"
+            tasks_view "$1"
+            ;;
+        edit)
+            [[ -z "${1:-}" ]] && die "Usage: aid tasks edit <task-id> [context.md|plan.md]"
+            tasks_edit "$1" "${2:-plan.md}"
+            ;;
+        phase)
+            [[ -z "${1:-}" ]] && die "Usage: aid tasks phase <task-id> <phase>"
+            tasks_phase "$1" "${2:-}"
+            ;;
+        cleanup|clean)
+            local mode="merged"
+            local force="false"
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --merged) mode="merged" ;;
+                    --all)    mode="all" ;;
+                    --force|-f) force="true" ;;
+                    *) die "Unknown tasks cleanup option: $1" ;;
+                esac
+                shift
+            done
+            tasks_cleanup "$mode" "$force"
+            ;;
+        *)
+            die "Unknown tasks subcommand: $subcmd  (list|view|edit|phase|cleanup)"
+            ;;
+    esac
+}
+
+# ==============================================================================
 # Usage
 # ==============================================================================
 
@@ -1003,8 +1538,20 @@ ${BOLD}USAGE${NC}
     aid view <session-id>            View session details and optionally resume
     aid cleanup [options]            Clean up sessions (see options below)
     aid resume <session-id>          Resume a previous session
+    aid tasks [subcommand]           Manage persistent task contexts
     aid help                         Show this help message
     aid --version                    Show version information
+
+${BOLD}TASKS SUBCOMMANDS${NC}
+    aid tasks                        List all task contexts
+    aid tasks list                   List all task contexts
+    aid tasks view <task-id>         Show task metadata, context.md, and plan.md
+    aid tasks edit <task-id> [file]  Open context.md or plan.md in \$EDITOR
+    aid tasks phase <task-id> <p>    Set phase (research|plan|implement|review|done)
+    aid tasks cleanup [options]      Remove task contexts for merged/deleted branches
+      --merged                       (default) Remove tasks whose branch is gone from origin
+      --all                          Remove all task contexts
+      --force, -f                    Actually remove (without this, just lists them)
 
 ${BOLD}CLEANUP OPTIONS${NC}
     --force, -f                 Actually remove sessions (without this, just lists them)
@@ -1043,15 +1590,32 @@ ${BOLD}EXAMPLES${NC}
     # Clean up all (orphaned + failed)
     aid cleanup --all --force
 
+    # List all task contexts
+    aid tasks
+
+    # View a task's research notes and plan
+    aid tasks view aid-20260313-143052-12345
+
+    # Edit the implementation plan before work starts
+    aid tasks edit aid-20260313-143052-12345 plan.md
+
+    # Advance phase manually
+    aid tasks phase aid-20260313-143052-12345 implement
+
+    # Clean up tasks for merged branches
+    aid tasks cleanup --merged --force
+
 ${BOLD}WORKFLOW${NC}
     1. AI creates PR via dispatch    -> PR opened
     2. You run: aid review <pr-url>  -> AI posts review comment
     3. If issues found:              -> Run: aid <pr-url> to fix
     4. When satisfied:               -> gh pr merge --delete-branch
+    5. Clean task contexts:          -> aid tasks cleanup --merged --force
 
 ${BOLD}ENVIRONMENT${NC}
-    AID_DEBUG=1       Enable debug output
-    AID_DRY_RUN=1     Show what would be done without executing
+    AID_DEBUG=1          Enable debug output
+    AID_DRY_RUN=1        Show what would be done without executing
+    AID_NO_CONTEXT=1     Disable task context injection
 
 ${BOLD}REQUIREMENTS${NC}
     - git (with worktree support)
@@ -1061,8 +1625,12 @@ ${BOLD}REQUIREMENTS${NC}
 
 
 ${BOLD}FILES${NC}
-    ~/.config/opencode/dispatch/    Session state files
-    ~/.config/opencode/worktrees/   Git worktrees for AI work
+    ~/.config/opencode/dispatch/        Session state files
+    ~/.config/opencode/worktrees/       Git worktrees for AI work
+    ~/.config/opencode/tasks/<id>/      Persistent task context directories
+      task.json                         Task metadata (phase, branch, PR info)
+      context.md                        Agent-written research notes
+      plan.md                           Implementation plan (editable)
 
 EOF
 }
@@ -1079,7 +1647,7 @@ main() {
     require_cmd gh
 
     # Ensure directories exist
-    mkdir -p "$DISPATCH_DIR" "$WORKTREES_DIR"
+    mkdir -p "$DISPATCH_DIR" "$WORKTREES_DIR" "$TASKS_DIR"
 
     # Parse command
     local cmd="${1:-}"
@@ -1136,6 +1704,10 @@ main() {
             fi
             
             review_pr "$2"
+            ;;
+        tasks|task)
+            shift
+            tasks_cmd "$@"
             ;;
         *)
             # Assume it's a task description or URL

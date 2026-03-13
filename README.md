@@ -1,6 +1,6 @@
 # aid - Automated Development for OpenCode
 
-A workflow automation tool for OpenCode that handles development tasks from start to pull request creation, with built-in PR review capabilities.
+A workflow automation tool for OpenCode that handles development tasks from start to pull request creation, with built-in PR review capabilities and persistent task context across sessions.
 
 ## Features
 
@@ -10,6 +10,8 @@ A workflow automation tool for OpenCode that handles development tasks from star
 - **PR Review Mode**: Read-only review of PRs with automated feedback posting
 - **Plain Text Tasks**: Work on any task described in plain text
 - **Git Worktree Isolation**: Each task runs in its own isolated worktree
+- **Persistent Task Context**: Research notes and implementation plans survive across sessions
+- **Phase Tracking**: Tasks move through research → plan → implement → review → done
 - **Automatic Cleanup**: Clean shutdown and resource management
 - **Session Management**: Track, list, and resume work sessions
 
@@ -39,6 +41,12 @@ aid view 20250312-143022-1234
 
 # Clean up orphaned sessions
 aid cleanup --force
+
+# List all task contexts
+aid tasks
+
+# View a task's research notes and plan
+aid tasks view aid-20250312-143022-1234
 ```
 
 ## PR Review Workflow
@@ -54,7 +62,7 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  2. You run: aid review https://github.com/owner/repo/pull/42  │
-│     └─> AI analyzes PR (read-only)                              │
+│     └─> AI analyzes PR (read-only) + injects task context       │
 │     └─> AI posts review comment with issues/suggestions         │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -79,6 +87,66 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 | `aid review <pr-url>` | Read-only | Yes (detached, for code exploration) | No | Yes |
 | `aid <pr-url>` | Full access | Yes | Yes | Creates commits |
 
+## Task Context System
+
+Each task accumulates a persistent context directory that survives across sessions:
+
+```
+~/.config/opencode/tasks/<task-id>/
+├── task.json      # Metadata: phase, branch, repo, PR info
+├── context.md     # Agent-written research notes and decisions
+└── plan.md        # Implementation plan (editable by user)
+```
+
+### Phase Lifecycle
+
+```
+research → plan → implement → review → done
+```
+
+The agent writes `context.md` during research and `plan.md` during planning. On subsequent runs, this context is injected back into the prompt so the agent resumes from where it left off — without re-researching the codebase.
+
+### Task Commands
+
+```bash
+# List all task contexts
+aid tasks
+
+# Show task metadata, context.md, and plan.md
+aid tasks view aid-20250312-143022-1234
+
+# Edit the implementation plan before work starts
+aid tasks edit aid-20250312-143022-1234 plan.md
+
+# Manually advance or reset phase
+aid tasks phase aid-20250312-143022-1234 implement
+
+# Clean up tasks for merged/deleted branches
+aid tasks cleanup --merged --force
+
+# Clean up all task contexts
+aid tasks cleanup --all --force
+```
+
+### Review with Task Context
+
+When `aid review <pr-url>` is called, if a task context exists for that PR's branch, it is automatically injected into the review prompt:
+
+```
+--- Resuming task: aid-issue-123 (phase: review) ---
+
+### Previous Research (context.md)
+<research notes>
+
+### Implementation Plan (plan.md)
+<checklist>
+
+---
+Review PR #124: ...
+```
+
+This allows the review agent to verify that the implementation matches the original plan, skip known trade-offs, and catch deviations.
+
 ## Documentation
 
 - [Installation Guide](docs/installation.md)
@@ -91,15 +159,16 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 1. **Launch**: Run any `aid` command to open OpenCode TUI
 2. **Visual Interface**: Full OpenCode TUI experience with real-time updates
 3. **Worktree Isolation**: Tasks run in isolated git worktrees for safety
-4. **Interactive Experience**: Watch progress and interact with the AI
+4. **Task Context**: Research and plans persist across sessions automatically
 
 ### PR Review (`aid review <pr-url>`)
 
 1. **Fetch PR**: Gets PR details, diff, comments, and existing reviews
-2. **Create Worktree**: Creates a detached-HEAD worktree at the PR's head (for `git grep`/`git show` access); fork PRs fall back to the source repo
-3. **Run OpenCode**: Launches OpenCode with read-only `review` agent
-4. **Analyze**: Agent reviews code for issues, bugs, and improvements
-5. **Post Comment**: Agent posts review comment via `gh pr review`
+2. **Task Context Lookup**: Searches for task context matching the PR URL or branch
+3. **Create Worktree**: Creates a detached-HEAD worktree at the PR's head (for `git grep`/`git show` access); fork PRs fall back to the source repo
+4. **Run OpenCode**: Launches OpenCode with read-only `review` agent and injected context
+5. **Analyze**: Agent reviews code against the original plan and intent
+6. **Post Comment**: Agent posts review comment via `gh pr review`
 
 ## Agents
 
@@ -142,6 +211,11 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 │   └── dispatch-workflow/  # Development workflow skill
 ├── dispatch/               # Session state files
 ├── worktrees/              # Git worktrees for tasks
+├── tasks/                  # Persistent task contexts
+│   └── <task-id>/
+│       ├── task.json       # Task metadata and phase
+│       ├── context.md      # Agent research notes
+│       └── plan.md         # Implementation plan
 └── docs/                   # Documentation
 ```
 
@@ -151,6 +225,7 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 |----------|-------------|
 | `AID_DEBUG=1` | Enable debug output |
 | `AID_DRY_RUN=1` | Show what would be done without executing |
+| `AID_NO_CONTEXT=1` | Disable task context injection |
 
 ## License
 

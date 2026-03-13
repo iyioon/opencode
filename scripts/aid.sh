@@ -430,8 +430,10 @@ cmd_resume() {
     # Auto-merge if approved by GitHub Review
     if [[ "$review_decision" == "APPROVED" ]]; then
         log_info "PR has been approved. Merging..."
-        cmd_approve "$task_id"
-        return
+        if cmd_approve "$task_id"; then
+            return
+        fi
+        log_warn "Auto-merge failed. Handing back to agent."
     fi
     
     # Check for "LGTM" comment (case-insensitive, optional punctuation)
@@ -441,8 +443,10 @@ cmd_resume() {
         
     if [[ -n "$lgtm_comment" ]]; then
         log_info "Found LGTM comment. Merging..."
-        cmd_approve "$task_id"
-        return
+        if cmd_approve "$task_id"; then
+            return
+        fi
+        log_warn "Auto-merge failed. Handing back to agent."
     fi
     
     # Fetch PR feedback (reviews with content + recent comments with content)
@@ -453,6 +457,17 @@ cmd_resume() {
             ([.reviews[] | select(.state == "CHANGES_REQUESTED" and .body != "") | "Review (CHANGES_REQUESTED): " + .body] +
              [.comments[-5:][] | select(.body != "" and (.body | test("^lgtm[.!]?$"; "i") | not)) | "Comment: " + .body]) | join("\n\n")
         ' 2>/dev/null) || feedback=""
+
+    # Check for merge conflicts
+    local mergeable_state
+    mergeable_state=$(gh pr view "$pr_number" --repo "$repo" --json mergeable --jq '.mergeable' 2>/dev/null) || mergeable_state=""
+    
+    if [[ "$mergeable_state" == "CONFLICTING" ]]; then
+        if [[ -n "$feedback" ]]; then
+            feedback="${feedback}"$'\n\n'
+        fi
+        feedback="${feedback}SYSTEM ALERT: The PR has merge conflicts. Please resolve them."
+    fi
     
     # Check if feedback has actual content (not just whitespace)
     if [[ -z "${feedback//[[:space:]]/}" ]]; then
@@ -527,9 +542,20 @@ cmd_approve() {
     [[ -n "$pr_number" ]] || die "No PR associated with task: $task_id"
     [[ -n "$repo" ]] || die "No repo associated with task: $task_id"
     
+    # Check for conflicts
+    local mergeable_state
+    mergeable_state=$(gh pr view "$pr_number" --repo "$repo" --json mergeable --jq '.mergeable' 2>/dev/null) || mergeable_state=""
+    
+    if [[ "$mergeable_state" == "CONFLICTING" ]]; then
+        log_warn "PR #${pr_number} has merge conflicts."
+        return 1
+    fi
+    
     log_info "Merging PR #${pr_number}..."
-    gh pr merge "$pr_number" --repo "$repo" --squash --delete-branch || \
-        die "Failed to merge PR"
+    if ! gh pr merge "$pr_number" --repo "$repo" --squash --delete-branch; then
+        log_warn "Failed to merge PR #${pr_number}."
+        return 1
+    fi
     
     log_success "PR #${pr_number} merged"
     
@@ -624,7 +650,7 @@ ${BOLD}USAGE${NC}
   aid new "task description"     Create new task and start working
   aid new <issue-url>            Create task from GitHub issue
   aid status                     List tasks by status
-  aid <task-id>                  Address PR feedback (auto-merges if approved)
+  aid <task-id>                  Address PR feedback or conflicts (auto-merges if approved)
   aid <pr-url>                   Address PR feedback by PR URL
   aid view <task-id>             Open PR in browser or show task info
   aid approve <task-id>          Merge PR and cleanup

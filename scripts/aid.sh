@@ -814,7 +814,9 @@ review_pr() {
         matched_task_id=$(find_task_by_pr "$pr_url" "$pr_branch_name" 2>/dev/null || echo "")
         if [[ -n "$matched_task_id" ]]; then
             task_context_block=$(build_task_context_block "$matched_task_id")
-            log_debug "Injecting task context for: $matched_task_id"
+            log_info "Found existing task: $matched_task_id"
+        else
+            log_debug "No existing task found for this PR (review will proceed without task context)"
         fi
     fi
 

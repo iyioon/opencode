@@ -1338,10 +1338,14 @@ tasks_list() {
         # If the task is not already marked done, query GitHub to get the real
         # state: branch gone means merged/closed; PR state provides more detail.
         if [[ "$status" != "done" && -n "$task_repo" && "$task_repo" != "null" ]]; then
-            local http_status="" pr_state=""
-            http_status=$(gh api --include \
-                "repos/${task_repo}/branches/${branch_name}" 2>/dev/null \
-                | grep -m1 '^HTTP/' | awk '{print $2}')
+            local http_status="" pr_state="" gh_raw=""
+            # Capture gh api output into a variable first to avoid SIGPIPE when
+            # piping directly into grep -m1 (gh api writes many lines; grep exits
+            # after the first match and closes the pipe, sending SIGPIPE to gh api,
+            # which — under set -o pipefail — kills the whole script).
+            gh_raw=$(gh api --include \
+                "repos/${task_repo}/branches/${branch_name}" 2>/dev/null || true)
+            http_status=$(printf '%s\n' "$gh_raw" | grep -m1 '^HTTP/' | awk '{print $2}')
 
             if [[ "$http_status" == "404" ]]; then
                 # Branch is gone — check if the PR was merged or just closed
@@ -1569,10 +1573,14 @@ tasks_cleanup() {
                     # distinguish a definitive 404 (branch gone) from transient
                     # failures (network error, rate-limit, auth expiry) that
                     # should NOT cause a destructive removal.
-                    local http_status
-                    http_status=$(gh api --include \
-                        "repos/${task_repo}/branches/${branch}" 2>/dev/null \
-                        | grep -m1 '^HTTP/' | awk '{print $2}')
+                    # Capture into a variable first to avoid SIGPIPE: gh api
+                    # outputs many lines; grep -m1 exits early and closes the
+                    # pipe, which under set -o pipefail kills the script.
+                    local gh_raw=""
+                    gh_raw=$(gh api --include \
+                        "repos/${task_repo}/branches/${branch}" 2>/dev/null || true)
+                    local http_status=""
+                    http_status=$(printf '%s\n' "$gh_raw" | grep -m1 '^HTTP/' | awk '{print $2}')
                     if [[ "$http_status" == "404" ]]; then
                         should_clean=true
                         reason="branch deleted/merged"

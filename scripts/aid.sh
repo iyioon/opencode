@@ -386,8 +386,8 @@ build_task_context_block() {
     [[ -f "${tdir}/context.md" ]] && context_md=$(cat "${tdir}/context.md")
     [[ -f "${tdir}/plan.md" ]] && plan_md=$(cat "${tdir}/plan.md")
 
-    # Nothing useful yet
-    if [[ -z "$task_json" && -z "$context_md" && -z "$plan_md" ]]; then
+    # Nothing useful yet — only task.json exists, no agent-written content
+    if [[ -z "$context_md" && -z "$plan_md" ]]; then
         return 0
     fi
 
@@ -1093,6 +1093,12 @@ Review the PR comments and requested changes, then implement the necessary fixes
     local extra_context=""
     [[ "$task_type" == "github_pr" ]] && extra_context=$'\n'"- Branch: ${branch_name} (push directly to update the PR)"
 
+    # Only tell the agent to write context files when context is enabled
+    local context_dir_hint=""
+    if [[ "${AID_NO_CONTEXT:-}" != "1" ]]; then
+        context_dir_hint=$'\n'"- Task context dir: ${TASKS_DIR}/${task_id} (write research notes to context.md, implementation plan to plan.md)"
+    fi
+
     local task_prompt
     if [[ -n "$context_block" ]]; then
         task_prompt="${context_block}
@@ -1103,8 +1109,7 @@ ${task_description}
 ## Context
 
 - Worktree: ${worktree_path}
-- Target branch: ${default_branch}${extra_context}
-- Task context dir: ${TASKS_DIR}/${task_id} (write research notes to context.md, implementation plan to plan.md)"
+- Target branch: ${default_branch}${extra_context}${context_dir_hint}"
     else
         task_prompt="## Task
 
@@ -1113,8 +1118,7 @@ ${task_description}
 ## Context
 
 - Worktree: ${worktree_path}
-- Target branch: ${default_branch}${extra_context}
-- Task context dir: ${TASKS_DIR}/${task_id} (write research notes to context.md, implementation plan to plan.md)"
+- Target branch: ${default_branch}${extra_context}${context_dir_hint}"
     fi
 
     # Change to worktree and run OpenCode

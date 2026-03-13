@@ -1380,7 +1380,7 @@ tasks_list() {
                     # Search for any open PR whose head matches this branch
                     local found_pr
                     found_pr=$(gh api "repos/${task_repo}/pulls?state=open&head=${task_repo%%/*}:${branch_name}" \
-                        --jq '.[0] | "\(.number) \(.html_url)"' 2>/dev/null || echo "")
+                        --jq '.[0] | select(. != null) | "\(.number) \(.html_url)"' 2>/dev/null || echo "")
                     if [[ -n "$found_pr" ]]; then
                         live_pr_number=$(echo "$found_pr" | awk '{print $1}')
                         live_pr_url=$(echo "$found_pr" | awk '{print $2}')

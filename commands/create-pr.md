@@ -61,7 +61,36 @@ gh pr create --title "TITLE" --body "BODY"
 [Closes #123 or "N/A" if no related issue]
 ```
 
-### Step 5: Confirm Success
+### Step 5: Update Task Context
+
+After the PR is created successfully, update the task context so `aid task` reflects the correct phase and PR URL.
+
+Capture the PR URL from the `gh pr create` output (it is printed on the last line), then run:
+
+```bash
+# Get current branch name
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+# Derive the task ID (replace / with -)
+TASK_ID=$(echo "$BRANCH" | tr '/' '-')
+# Get the PR number from the URL (last path segment)
+PR_URL="<url from gh pr create output>"
+PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+
+# Record the PR on the task and advance to review phase
+aid tasks phase "$TASK_ID" review 2>/dev/null || true
+
+# Also persist the PR URL into task.json if the task exists
+TASK_FILE="${HOME}/.config/opencode/tasks/${TASK_ID}/task.json"
+if [[ -f "$TASK_FILE" && -n "$PR_NUMBER" ]]; then
+    tmp=$(mktemp)
+    jq --argjson n "$PR_NUMBER" --arg u "$PR_URL" \
+        '.pr_number = $n | .pr_url = $u' "$TASK_FILE" > "$tmp" && mv "$tmp" "$TASK_FILE" || rm -f "$tmp"
+fi
+```
+
+If the task directory does not exist (e.g. `AID_NO_CONTEXT=1` was set), skip this step silently.
+
+### Step 6: Confirm Success
 
 After creating the PR, output the PR URL so the user can review it.
 

@@ -349,10 +349,9 @@ update_task_phase() {
     update_task_json "$task_id" "phase" "\"${phase}\""
 }
 
-# Attach a PR number + URL to a task.
-# TODO: Not yet wired up. Placeholder for future auto-advance logic: call this
-#       after a PR is created to record the PR number/URL and move the phase to
-#       "review" automatically.
+# Attach a PR number + URL to a task and advance phase to "review".
+# Called by the create-pr command (via the shell snippet in create-pr.md) after
+# gh pr create succeeds.
 update_task_pr() {
     local task_id="$1"
     local pr_number="$2"
@@ -369,9 +368,9 @@ update_task_pr() {
         "$tfile" > "$tmp" && mv "$tmp" "$tfile"
 }
 
-# Mark a task as done.
-# TODO: Not yet wired up. Placeholder for future auto-advance logic: call this
-#       after a PR is merged to mark the task phase as "done" automatically.
+# Mark a task as done (phase=done, status=done).
+# Called automatically by tasks_cleanup when it detects a branch has been
+# merged/deleted on the remote before removing the task directory.
 complete_task() {
     local task_id="$1"
     update_task_json "$task_id" "phase" '"done"'
@@ -1305,10 +1304,11 @@ view_session() {
 
 tasks_list() {
     local count=0
+    local merged_count=0
 
     local col_id=40
     local col_phase=12
-    local col_status=10
+    local col_status=12
     local col_branch=35
     local total_width=$((col_id + col_phase + col_status + col_branch))
     local separator
@@ -1326,11 +1326,60 @@ tasks_list() {
     for tfile in "${TASKS_DIR}"/*/task.json; do
         [[ -f "$tfile" ]] || continue
 
-        local task_id phase status branch_name
+        local task_id phase status branch_name task_repo pr_url
         task_id=$(jq -r '.id // "unknown"' "$tfile" 2>/dev/null)
         phase=$(jq -r '.phase // "unknown"' "$tfile" 2>/dev/null)
         status=$(jq -r '.status // "unknown"' "$tfile" 2>/dev/null)
         branch_name=$(jq -r '.branch // "unknown"' "$tfile" 2>/dev/null)
+        task_repo=$(jq -r '.repo // ""' "$tfile" 2>/dev/null)
+        pr_url=$(jq -r '.pr_url // ""' "$tfile" 2>/dev/null)
+
+        # --- Live GitHub status check ---
+        # If the task is not already marked done, query GitHub to get the real
+        # state: branch gone means merged/closed; PR state provides more detail.
+        if [[ "$status" != "done" && -n "$task_repo" && "$task_repo" != "null" ]]; then
+            local http_status="" pr_state=""
+            http_status=$(gh api --include \
+                "repos/${task_repo}/branches/${branch_name}" 2>/dev/null \
+                | grep -m1 '^HTTP/' | awk '{print $2}')
+
+            if [[ "$http_status" == "404" ]]; then
+                # Branch is gone — check if the PR was merged or just closed
+                if [[ -n "$pr_url" && "$pr_url" != "null" ]]; then
+                    local pr_number=""
+                    pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
+                    pr_state=$(gh api "repos/${task_repo}/pulls/${pr_number}" \
+                        --jq '.state + (if .merged_at then "/merged" else "" end)' \
+                        2>/dev/null || echo "")
+                fi
+                if [[ "$pr_state" == *"merged"* ]]; then
+                    status="merged"
+                    phase="done"
+                elif [[ "$pr_state" == "closed"* ]]; then
+                    status="closed"
+                    phase="done"
+                else
+                    status="merged"
+                    phase="done"
+                fi
+                merged_count=$((merged_count + 1))
+            elif [[ "$http_status" == "200" && -n "$pr_url" && "$pr_url" != "null" && "$phase" != "done" ]]; then
+                # Branch still exists — enrich with live PR state
+                local pr_number="" live_pr_state=""
+                pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
+                if [[ -n "$pr_number" ]]; then
+                    live_pr_state=$(gh api "repos/${task_repo}/pulls/${pr_number}" \
+                        --jq '.state' 2>/dev/null || echo "")
+                fi
+                if [[ "$live_pr_state" == "open" && "$phase" == "research" ]]; then
+                    # PR exists but phase wasn't advanced — fix it
+                    phase="review"
+                    status="active"
+                    # Persist the correction silently
+                    update_task_phase "$task_id" "review" 2>/dev/null || true
+                fi
+            fi
+        fi
 
         # Truncate long task IDs
         if [[ ${#task_id} -gt $((col_id - 2)) ]]; then
@@ -1344,16 +1393,26 @@ tasks_list() {
         # Color phase
         local phase_colored
         case "$phase" in
-            research) phase_colored="${CYAN}${phase}${NC}" ;;
-            plan)     phase_colored="${YELLOW}${phase}${NC}" ;;
+            research)  phase_colored="${CYAN}${phase}${NC}" ;;
+            plan)      phase_colored="${YELLOW}${phase}${NC}" ;;
             implement) phase_colored="${BLUE}${phase}${NC}" ;;
-            review)   phase_colored="${YELLOW}${phase}${NC}" ;;
-            done)     phase_colored="${GREEN}${phase}${NC}" ;;
-            *)        phase_colored="${NC}${phase}${NC}" ;;
+            review)    phase_colored="${YELLOW}${phase}${NC}" ;;
+            done)      phase_colored="${GREEN}${phase}${NC}" ;;
+            *)         phase_colored="${NC}${phase}${NC}" ;;
         esac
 
-        printf "%-${col_id}s %-${col_phase}b %-${col_status}s %-${col_branch}s\n" \
-            "$task_id" "$phase_colored" "$status" "$branch_name"
+        # Color status
+        local status_colored
+        case "$status" in
+            active)  status_colored="${NC}${status}${NC}" ;;
+            merged)  status_colored="${GREEN}${status}${NC}" ;;
+            closed)  status_colored="${YELLOW}${status}${NC}" ;;
+            done)    status_colored="${GREEN}${status}${NC}" ;;
+            *)       status_colored="${NC}${status}${NC}" ;;
+        esac
+
+        printf "%-${col_id}s %-${col_phase}b %-${col_status}b %-${col_branch}s\n" \
+            "$task_id" "$phase_colored" "$status_colored" "$branch_name"
         count=$((count + 1))
     done
 
@@ -1362,6 +1421,9 @@ tasks_list() {
         echo "No task contexts found"
     else
         echo "Total: $count task(s)"
+        if [[ $merged_count -gt 0 ]]; then
+            printf '%b\n' "${YELLOW}Tip: $merged_count merged/closed task(s) found. Run: ${BOLD}aid tasks cleanup --merged --force${NC}${YELLOW} to remove them.${NC}"
+        fi
     fi
     echo ""
 }
@@ -1539,6 +1601,9 @@ tasks_cleanup() {
             log_info "Found task to clean (${reason}): $task_id"
 
             if [[ "$force" == "true" ]]; then
+                # Mark as done before removing so any concurrent reader sees a
+                # terminal state rather than stale "active".
+                complete_task "$task_id" 2>/dev/null || true
                 rm -rf "$tdir"
                 log_success "Removed: $tdir"
                 cleaned=$((cleaned + 1))
@@ -1595,7 +1660,7 @@ tasks_cmd() {
             tasks_cleanup "$mode" "$force"
             ;;
         *)
-            die "Unknown tasks subcommand: $subcmd  (list|view|edit|phase|cleanup)"
+            die "Unknown tasks subcommand: $subcmd  (list|view|edit|phase|cleanup|sync)"
             ;;
     esac
 }
@@ -1623,8 +1688,8 @@ ${BOLD}USAGE${NC}
     aid --version                    Show version information
 
 ${BOLD}TASKS SUBCOMMANDS${NC}
-    aid tasks                        List all task contexts
-    aid tasks list                   List all task contexts
+    aid tasks                        List all task contexts (queries GitHub for live status)
+    aid tasks list                   List all task contexts (queries GitHub for live status)
     aid tasks view <task-id>         Show task metadata, context.md, and plan.md
     aid tasks edit <task-id> [file]  Open context.md or plan.md in \$EDITOR
     aid tasks phase <task-id> <p>    Set phase (research|plan|implement|review|done)
@@ -1686,11 +1751,12 @@ ${BOLD}EXAMPLES${NC}
     aid tasks cleanup --merged --force
 
 ${BOLD}WORKFLOW${NC}
-    1. AI creates PR via dispatch    -> PR opened
+    1. AI creates PR via dispatch    -> PR opened; task phase advances to "review"
     2. You run: aid review <pr-url>  -> AI posts review comment
     3. If issues found:              -> Run: aid <pr-url> to fix
     4. When satisfied:               -> gh pr merge --delete-branch
-    5. Clean task contexts:          -> aid tasks cleanup --merged --force
+    5. aid tasks (list)              -> Shows merged tasks with status "merged"
+    6. Clean task contexts:          -> aid tasks cleanup --merged --force
 
 ${BOLD}ENVIRONMENT${NC}
     AID_DEBUG=1          Enable debug output

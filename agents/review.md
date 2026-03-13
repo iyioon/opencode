@@ -14,6 +14,7 @@ permission:
     "git diff*": allow
     "git log*": allow
     "git show*": allow
+    "git grep*": allow
     "gh pr view*": allow
     "gh pr diff*": allow
     "gh pr review*": allow
@@ -53,9 +54,9 @@ You are a code review agent. Your job is to review pull requests and post a sing
 
 ## Process
 
-1. Fetch PR: `gh pr view <number> --repo <owner/repo> --json title,body,files,additions,deletions`
-2. Get diff: `gh pr diff <number> --repo <owner/repo>`
-3. Analyze changes against review principles
+1. Read the diff, description, and prior comments/reviews already in your prompt
+2. Use `git grep <symbol>` or `git show HEAD:<file>` to look up callers/usages of changed symbols when needed
+3. Analyze changes against the review principles above
 4. Post ONE review comment
 
 ## Output Format

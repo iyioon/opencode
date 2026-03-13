@@ -642,7 +642,7 @@ Source: $input"
         pr_branch_name=$(echo "$pr_json" | jq -r '.headRefName')
         [[ -z "$pr_branch_name" || "$pr_branch_name" == "null" ]] &&
             die "Could not determine PR branch name from PR #${pr_number}"
-        pr_is_fork=$(echo "$pr_json" | jq -r '.isCrossRepository // false')
+        pr_is_fork=$(echo "$pr_json" | jq '.isCrossRepository // false')
         if [[ "$pr_is_fork" == "true" ]]; then
             die "Fork PRs are not yet supported. Check out the branch manually and re-run."
         fi
@@ -698,16 +698,18 @@ Review the PR comments and requested changes, then implement the necessary fixes
     if [[ "$task_type" == "github_pr" ]]; then
         # For PR tasks: check out the existing PR branch so fixes go directly to the PR
         if git show-ref --verify --quiet "refs/heads/${branch_name}" 2>/dev/null; then
-            # Refuse to sync if local branch has unpushed commits — avoids silent data loss
-            local ahead
-            ahead=$(git rev-list --count "origin/${branch_name}..refs/heads/${branch_name}" 2>/dev/null || echo 0)
-            if [[ "$ahead" -gt 0 ]]; then
-                die "Local branch '${branch_name}' is ${ahead} commit(s) ahead of origin. Aborting to prevent data loss."
+            # Refuse to sync if local branch has diverged from origin — avoids silent data loss
+            local local_tip remote_tip merge_base
+            local_tip=$(git rev-parse "refs/heads/${branch_name}")
+            remote_tip=$(git rev-parse "origin/${branch_name}")
+            merge_base=$(git merge-base "refs/heads/${branch_name}" "origin/${branch_name}" 2>/dev/null || true)
+            if [[ "$local_tip" != "$remote_tip" && "$merge_base" != "$local_tip" ]]; then
+                die "Local branch '${branch_name}' has diverged from origin. Aborting to prevent data loss."
             fi
             # Refuse to reset if the branch is already checked out in another worktree
             local worktree_list
             worktree_list=$(git worktree list --porcelain) || die "Failed to list worktrees"
-            if echo "$worktree_list" | grep -q "branch refs/heads/${branch_name}$"; then
+            if echo "$worktree_list" | grep -qF "branch refs/heads/${branch_name}"; then
                 die "Branch '${branch_name}' is already checked out in another worktree. Remove it first."
             fi
             git branch -f "$branch_name" "origin/${branch_name}" ||

@@ -1,10 +1,12 @@
 {
   "id": "aid-20260313-165626-68240",
   "branch": "aid/20260313-165626-68240",
+  "worktree": "/Users/jason/.config/opencode/worktrees/aid-20260313-165626-68240",
   "repo": "iyioon/aid",
-  "created": "2026-03-13T08:56:26Z",
-  "phase": "review",
+  "source": "Migrated from old task system",
+  "source_url": "",
+  "status": "awaiting-review",
   "pr_number": 27,
   "pr_url": "https://github.com/iyioon/aid/pull/27",
-  "status": "active"
+  "created": "2026-03-13T08:56:26Z"
 }

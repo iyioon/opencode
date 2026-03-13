@@ -998,6 +998,14 @@ Source: $input"
             else map("**\(.author.login)** [\(.state)]: \(.body)") | join("\n\n")
             end')
 
+        # Fetch inline review thread comments via REST API
+        local inline_comments_json inline_text
+        inline_comments_json=$(gh api "repos/${repo_path}/pulls/${pr_number}/comments" 2>/dev/null || echo "[]")
+        inline_text=$(echo "$inline_comments_json" | jq -r '
+            if length == 0 then "(none)"
+            else map("**\(.user.login)** on `\(.path)` line \(.original_line // .line // "?"):\n\(.body)") | join("\n\n")
+            end')
+
         task_description="GitHub PR #${pr_number}: ${pr_title}
 
 $(echo "$pr_json" | jq -r '.body // "No description provided"')
@@ -1010,6 +1018,9 @@ ${comments_text}
 
 ## Review Feedback
 ${reviews_text}
+
+## Inline Review Comments
+${inline_text}
 
 Source: $input
 

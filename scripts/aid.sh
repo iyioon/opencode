@@ -1346,7 +1346,7 @@ tasks_list() {
             if [[ "$http_status" == "404" ]]; then
                 # Branch is gone — check if the PR was merged or just closed
                 if [[ -n "$pr_url" && "$pr_url" != "null" ]]; then
-                    local pr_number
+                    local pr_number=""
                     pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
                     pr_state=$(gh api "repos/${task_repo}/pulls/${pr_number}" \
                         --jq '.state + (if .merged_at then "/merged" else "" end)' \
@@ -1363,7 +1363,7 @@ tasks_list() {
                     phase="done"
                 fi
                 merged_count=$((merged_count + 1))
-            elif [[ -n "$pr_url" && "$pr_url" != "null" && "$phase" != "done" ]]; then
+            elif [[ "$http_status" == "200" && -n "$pr_url" && "$pr_url" != "null" && "$phase" != "done" ]]; then
                 # Branch still exists — enrich with live PR state
                 local pr_number live_pr_state
                 pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')

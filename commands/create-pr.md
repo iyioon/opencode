@@ -81,10 +81,10 @@ aid tasks phase "$TASK_ID" review 2>/dev/null || true
 
 # Also persist the PR URL into task.json if the task exists
 TASK_FILE="${HOME}/.config/opencode/tasks/${TASK_ID}/task.json"
-if [[ -f "$TASK_FILE" ]]; then
+if [[ -f "$TASK_FILE" && -n "$PR_NUMBER" ]]; then
     tmp=$(mktemp)
     jq --argjson n "$PR_NUMBER" --arg u "$PR_URL" \
-        '.pr_number = $n | .pr_url = $u' "$TASK_FILE" > "$tmp" && mv "$tmp" "$TASK_FILE"
+        '.pr_number = $n | .pr_url = $u' "$TASK_FILE" > "$tmp" && mv "$tmp" "$TASK_FILE" || rm -f "$tmp"
 fi
 ```
 

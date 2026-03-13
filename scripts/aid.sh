@@ -1,23 +1,6 @@
 #!/usr/bin/env bash
 #
-# aid - Simplified AI workflow for OpenCode
-#
-# Usage:
-#   aid new "task description"       Create task and start working
-#   aid new <github-issue-url>       Create task from GitHub issue
-#   aid status                       List tasks by status
-#   aid <task-id>                    Resume a task (address PR feedback)
-#   aid <pr-url>                     Resume task from PR URL
-#   aid approve <task-id>            Merge PR and cleanup (alias: lgtm)
-#   aid lgtm <task-id>               Alias for approve
-#   aid cleanup                      Remove merged/closed tasks
-#   aid help                         Show help message
-#
-# Statuses:
-#   working          - AI is actively working
-#   awaiting-review  - PR created, waiting for human review
-#   needs-changes    - Human requested changes
-#   approved         - Merged and cleaned up
+# aid - AI development workflow for OpenCode
 
 set -euo pipefail
 

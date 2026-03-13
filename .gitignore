@@ -1,21 +1,15 @@
+# Runtime state
+tasks/
+worktrees/
+
 # Dependencies
 node_modules/
 bun.lock
 package-lock.json
 package.json
 
-# State and runtime files
-dispatch/*.json
-dispatch/*.lock
-!dispatch/.gitkeep
-
-# Worktrees (these are managed dynamically)
-worktrees/*
-!worktrees/.gitkeep
-
 # OS files
 .DS_Store
-Thumbs.db
 
 # Editor files
 *.swp
@@ -27,12 +21,11 @@ Thumbs.db
 # Logs
 *.log
 
-# Environment and secrets
+# Secrets
 .env
 .env.*
-!.env.example
 auth.json
 
-# Temporary files
+# Temporary
 tmp/
 *.tmp

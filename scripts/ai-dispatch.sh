@@ -690,7 +690,7 @@ Review the PR comments and requested changes, then implement the necessary fixes
         # the worktree is based entirely on the PR branch, so a stale default branch
         # cannot affect the work — failure here is intentionally non-fatal.
         git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch default branch, continuing anyway"
-        git fetch origin "$branch_name" 2>/dev/null || die "Failed to fetch PR branch '${branch_name}' from origin. Ensure the branch exists remotely."
+        git fetch origin "${branch_name}:refs/remotes/origin/${branch_name}" 2>/dev/null || die "Failed to fetch PR branch '${branch_name}' from origin. Ensure the branch exists remotely."
     else
         git fetch origin "$default_branch" 2>/dev/null || log_warn "Failed to fetch, continuing anyway"
     fi
@@ -705,14 +705,18 @@ Review the PR comments and requested changes, then implement the necessary fixes
             local local_tip remote_tip merge_base
             local_tip=$(git rev-parse "refs/heads/${branch_name}")
             remote_tip=$(git rev-parse "origin/${branch_name}")
-            merge_base=$(git merge-base "refs/heads/${branch_name}" "origin/${branch_name}" 2>/dev/null || true)
+            merge_base=$(git merge-base "refs/heads/${branch_name}" "origin/${branch_name}" 2>/dev/null) || {
+                die "Could not determine merge base for '${branch_name}'. Branch histories may be unrelated."
+            }
             if [[ "$local_tip" != "$remote_tip" && "$local_tip" != "$merge_base" ]]; then
                 die "Local branch '${branch_name}' has commits not in origin. Aborting to prevent data loss."
             fi
-            # Refuse to reset if the branch is already checked out in another worktree
-            local worktree_list
+            # Refuse to reset if the branch is already checked out in another worktree.
+            # Skip the first block (main worktree) in the porcelain output before checking.
+            local worktree_list linked_worktrees
             worktree_list=$(git worktree list --porcelain) || die "Failed to list worktrees"
-            if echo "$worktree_list" | grep -qxF "branch refs/heads/${branch_name}"; then
+            linked_worktrees=$(echo "$worktree_list" | awk 'BEGIN{block=0} /^$/{block++; next} block>0{print}')
+            if echo "$linked_worktrees" | grep -qxF "branch refs/heads/${branch_name}"; then
                 die "Branch '${branch_name}' is already checked out in another worktree. Remove it first."
             fi
             git branch -f "$branch_name" "origin/${branch_name}" ||

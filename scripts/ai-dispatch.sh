@@ -698,38 +698,35 @@ Review the PR comments and requested changes, then implement the necessary fixes
     # Create worktree - use existing PR branch or create new branch
     log_info "Creating worktree..."
     if [[ "$task_type" == "github_pr" ]]; then
-        # For PR tasks: check out the existing PR branch so fixes go directly to the PR
+        # For PR tasks: check out the existing PR branch so fixes go directly to the PR.
+        # If a local branch already exists, validate it is safe to remove before recreating
+        # it as a clean tracking branch from origin.
         if git show-ref --verify --quiet "refs/heads/${branch_name}" 2>/dev/null; then
-            # Die if local has commits not in origin (ahead or diverged) — safe to proceed
-            # only when local is a strict ancestor of or equal to origin (merge_base == local_tip).
-            local local_tip remote_tip merge_base
-            local_tip=$(git rev-parse "refs/heads/${branch_name}")
-            remote_tip=$(git rev-parse "origin/${branch_name}")
-            merge_base=$(git merge-base "refs/heads/${branch_name}" "origin/${branch_name}" 2>/dev/null) || {
-                die "Could not determine merge base for '${branch_name}'. Branch histories may be unrelated."
-            }
-            if [[ "$local_tip" != "$remote_tip" && "$local_tip" != "$merge_base" ]]; then
-                die "Local branch '${branch_name}' has commits not in origin. Aborting to prevent data loss."
-            fi
-            # Refuse to reset if the branch is already checked out in another worktree.
-            # Skip the first block (main worktree) in the porcelain output before checking.
-            local worktree_list linked_worktrees
+            # Guard: refuse if the branch is checked out in any linked worktree
+            local worktree_list
             worktree_list=$(git worktree list --porcelain) || die "Failed to list worktrees"
-            linked_worktrees=$(echo "$worktree_list" | awk 'BEGIN{block=0} /^$/{block++; next} block>0{print}')
+            # Skip the first block (main worktree) — we only care about linked worktrees
+            local linked_worktrees
+            linked_worktrees=$(echo "$worktree_list" | awk 'BEGIN{p=0} /^$/{p=1; next} p{print}')
             if echo "$linked_worktrees" | grep -qxF "branch refs/heads/${branch_name}"; then
                 die "Branch '${branch_name}' is already checked out in another worktree. Remove it first."
             fi
-            git branch -f "$branch_name" "origin/${branch_name}" ||
-                die "Could not reset local '${branch_name}' to origin/${branch_name}. Aborting to prevent stale worktree."
-            git worktree add "$worktree_path" "$branch_name" ||
-                die "Failed to create worktree for PR branch: $branch_name"
-            # Ensure upstream tracking is configured so the agent's push lands on the PR
-            git -C "$worktree_path" branch --set-upstream-to="origin/${branch_name}" "$branch_name" ||
-                log_warn "Could not set upstream tracking for '${branch_name}'"
-        else
-            git worktree add --track -b "$branch_name" "$worktree_path" "origin/${branch_name}" ||
-                die "Failed to create worktree for PR branch: $branch_name. Ensure 'origin/${branch_name}' exists (run: git fetch origin ${branch_name})"
+            # Guard: refuse if local branch has commits not reachable from origin
+            local local_tip merge_base
+            local_tip=$(git rev-parse "refs/heads/${branch_name}") ||
+                die "Could not resolve local branch '${branch_name}'"
+            merge_base=$(git merge-base "refs/heads/${branch_name}" "origin/${branch_name}") ||
+                die "Could not determine merge base for '${branch_name}'. Histories may be unrelated."
+            if [[ "$local_tip" != "$merge_base" ]]; then
+                die "Local branch '${branch_name}' has commits not in origin. Aborting to prevent data loss."
+            fi
+            # Safe to remove: local is a strict ancestor of (or equal to) origin
+            git branch -D "$branch_name" ||
+                die "Could not remove local branch '${branch_name}' before recreating it."
         fi
+        # Create a fresh tracking branch from origin and add the worktree
+        git worktree add --track -b "$branch_name" "$worktree_path" "origin/${branch_name}" ||
+            die "Failed to create worktree for PR branch '${branch_name}'. Ensure 'origin/${branch_name}' exists."
     else
         # For issues/text tasks: create a new aid/ branch off the default branch
         git worktree add -b "$branch_name" "$worktree_path" "origin/${default_branch}" 2>/dev/null ||

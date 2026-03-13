@@ -1469,9 +1469,19 @@ tasks_cleanup() {
             # other repos as deleted).
             if [[ -n "$branch" ]]; then
                 if [[ -n "$task_repo" ]]; then
-                    if ! gh api "repos/${task_repo}/branches/${branch}" &>/dev/null; then
+                    # Use --include to get HTTP response headers so we can
+                    # distinguish a definitive 404 (branch gone) from transient
+                    # failures (network error, rate-limit, auth expiry) that
+                    # should NOT cause a destructive removal.
+                    local http_status
+                    http_status=$(gh api --include \
+                        "repos/${task_repo}/branches/${branch}" 2>/dev/null \
+                        | grep -m1 '^HTTP/' | awk '{print $2}')
+                    if [[ "$http_status" == "404" ]]; then
                         should_clean=true
                         reason="branch deleted/merged"
+                    elif [[ -z "$http_status" ]]; then
+                        log_warn "Skipping task ${task_id}: could not reach GitHub API (network/auth error)"
                     fi
                 else
                     # Legacy tasks without a repo field: fall back to git ls-remote

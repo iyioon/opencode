@@ -20,9 +20,10 @@ permission:
 Review the code changes and return a verdict.
 
 <steps>
-1. Run `git diff origin/main..HEAD` to see all changes
-2. Check each change for issues
-3. Return your verdict in the format below
+1. Determine the base branch: run `git log --format='%D' origin/HEAD | head -1` to find it (usually `main` or `master`), falling back to `main`
+2. Run `git diff origin/<base-branch>..HEAD` to see all changes
+3. Check each change for issues
+4. Return your verdict in the format below
 </steps>
 
 <check_for>

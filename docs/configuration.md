@@ -4,7 +4,7 @@
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/opencode/scripts/` | Script files including ai-dispatch.sh |
+| `~/.config/opencode/scripts/` | Script files including aid.sh |
 | `~/.config/opencode/agents/` | Agent definitions (dispatch.md) |
 | `~/.config/opencode/commands/` | Custom commands |
 | `~/.config/opencode/dispatch/` | Session state files (JSON) |
@@ -98,7 +98,7 @@ Example: `aid/20250312-143022-1234`
 
 The worktree directory also uses this session ID.
 
-To change the prefix, edit `~/.config/opencode/scripts/ai-dispatch.sh`:
+To change the prefix, edit `~/.config/opencode/scripts/aid.sh`:
 
 ```bash
 # Find this line and change "aid/" to your preferred prefix

@@ -50,7 +50,7 @@ Create a symlink to make the `aid` command available globally:
 
 ```bash
 mkdir -p ~/.local/bin
-ln -sf ~/.config/opencode/scripts/ai-dispatch.sh ~/.local/bin/aid
+ln -sf ~/.config/opencode/scripts/aid.sh ~/.local/bin/aid
 ```
 
 ### 3. Add ~/.local/bin to PATH

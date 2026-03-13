@@ -128,7 +128,7 @@ The `aid review` command enables a human-in-the-loop workflow for AI-generated P
 ```
 ~/.config/opencode/
 ├── scripts/
-│   └── ai-dispatch.sh      # Main script (aid)
+│   └── aid.sh              # Main script (aid)
 ├── agents/
 │   ├── dispatch.md         # Development workflow agent
 │   └── review.md           # Read-only review agent

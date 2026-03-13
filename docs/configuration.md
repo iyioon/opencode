@@ -9,6 +9,7 @@
 | `~/.config/opencode/commands/` | Custom slash commands |
 | `~/.config/opencode/dispatch/` | Session state files (JSON) |
 | `~/.config/opencode/worktrees/` | Git worktrees for tasks |
+| `~/.config/opencode/tasks/` | Persistent task context directories |
 | `~/.config/opencode/opencode.json` | OpenCode global configuration |
 
 ---
@@ -66,7 +67,7 @@ Each agent has its own temperature setting. Edit each file separately if you wan
 
 There are two runtime prompts built by the script:
 
-**Dispatch prompt** (`dispatch()` function, around line 841):
+**Dispatch prompt** (`dispatch()` function):
 ```bash
 task_prompt="## Task
 
@@ -79,7 +80,7 @@ ${task_description}
 ```
 This prompt is passed via `--prompt` to `opencode --agent dispatch`.
 
-**Review prompt** (`review_pr()` function, around line 596):
+**Review prompt** (`review_pr()` function):
 ```bash
 review_prompt="Review PR #${pr_number}: ${pr_url}
 

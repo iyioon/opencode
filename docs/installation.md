@@ -9,7 +9,7 @@ Before installing aid, ensure you have:
    git --version
    ```
 
-2. **GitHub CLI** (for accessing GitHub issues)
+2. **GitHub CLI** (for GitHub API access: issues, PRs, and posting review comments)
    ```bash
    # Install
    brew install gh
@@ -102,5 +102,6 @@ rm -rf ~/.config/opencode/commands
 rm -rf ~/.config/opencode/skills
 rm -rf ~/.config/opencode/dispatch
 rm -rf ~/.config/opencode/worktrees
+rm -rf ~/.config/opencode/tasks
 rm -rf ~/.config/opencode/docs
 ```

@@ -18,6 +18,7 @@
 # Environment:
 #   AID_DEBUG=1                      Enable debug output
 #   AID_DRY_RUN=1                    Show what would be done without executing
+#   AID_NO_CONTEXT=1                 Disable task context injection
 
 set -euo pipefail
 

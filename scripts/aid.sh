@@ -969,7 +969,8 @@ Source: $input"
         log_info "Fetching PR #${pr_number} details..."
 
         local pr_json pr_title pr_branch_name pr_is_fork
-        pr_json=$(gh pr view "$pr_number" --repo "$repo_path" --json title,body,files,headRefName,isCrossRepository 2>/dev/null) ||
+        pr_json=$(gh pr view "$pr_number" --repo "$repo_path" \
+            --json title,body,files,headRefName,isCrossRepository,comments,reviews 2>/dev/null) ||
             die "Failed to fetch PR details. Make sure you're authenticated with 'gh auth login'"
         pr_title=$(echo "$pr_json" | jq -r '.title')
         pr_branch_name=$(echo "$pr_json" | jq -r '.headRefName')
@@ -983,6 +984,20 @@ Source: $input"
         # Use the PR's actual branch instead of creating a new aid/ branch
         branch_name="$pr_branch_name"
 
+        # Format comments and reviews for context
+        local comments_text reviews_text
+        comments_text=$(echo "$pr_json" | jq -r '
+            (.comments // []) |
+            if length == 0 then "(none)"
+            else map("**\(.author.login)**: \(.body)") | join("\n\n")
+            end')
+        reviews_text=$(echo "$pr_json" | jq -r '
+            (.reviews // []) |
+            map(select(.body != null and .body != "")) |
+            if length == 0 then "(none)"
+            else map("**\(.author.login)** [\(.state)]: \(.body)") | join("\n\n")
+            end')
+
         task_description="GitHub PR #${pr_number}: ${pr_title}
 
 $(echo "$pr_json" | jq -r '.body // "No description provided"')
@@ -990,9 +1005,15 @@ $(echo "$pr_json" | jq -r '.body // "No description provided"')
 Changed files:
 $(echo "$pr_json" | jq -r '.files[].path' | head -20)
 
+## Review Comments
+${comments_text}
+
+## Review Feedback
+${reviews_text}
+
 Source: $input
 
-Review the PR comments and requested changes, then implement the necessary fixes."
+Address the above review comments and requested changes."
 
         log_info "PR: #${pr_number} - ${pr_title}"
         log_info "PR branch: ${pr_branch_name}"

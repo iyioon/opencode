@@ -705,11 +705,13 @@ Review the PR comments and requested changes, then implement the necessary fixes
                 die "Local branch '${branch_name}' is ${ahead} commit(s) ahead of origin. Aborting to prevent data loss."
             fi
             # Refuse to reset if the branch is already checked out in another worktree
-            if git worktree list --porcelain | grep -q "branch refs/heads/${branch_name}$"; then
+            local worktree_list
+            worktree_list=$(git worktree list --porcelain) || die "Failed to list worktrees"
+            if echo "$worktree_list" | grep -q "branch refs/heads/${branch_name}$"; then
                 die "Branch '${branch_name}' is already checked out in another worktree. Remove it first."
             fi
             git branch -f "$branch_name" "origin/${branch_name}" ||
-                log_warn "Could not reset local '${branch_name}' to origin; it may be stale"
+                die "Could not reset local '${branch_name}' to origin/${branch_name}. Aborting to prevent stale worktree."
             git worktree add "$worktree_path" "$branch_name" ||
                 die "Failed to create worktree for PR branch: $branch_name"
             # Ensure upstream tracking is configured so the agent's push lands on the PR
@@ -742,8 +744,8 @@ Review the PR comments and requested changes, then implement the necessary fixes
     log_success "Worktree created successfully"
 
     # Prepare the task prompt - just the task and context, agent already knows the workflow
-    local branch_context=""
-    [[ "$task_type" == "github_pr" ]] && branch_context=$'\n'"- Branch: ${branch_name} (push directly to update the PR)"
+    local extra_context=""
+    [[ "$task_type" == "github_pr" ]] && extra_context=$'\n'"- Branch: ${branch_name} (push directly to update the PR)"
 
     local task_prompt
     task_prompt="## Task
@@ -752,8 +754,8 @@ ${task_description}
 
 ## Context
 
-- Worktree: ${worktree_path}${branch_context}
-- Target branch: ${default_branch}"
+- Worktree: ${worktree_path}
+- Target branch: ${default_branch}${extra_context}"
 
     # Change to worktree and run OpenCode
     log_info "Starting OpenCode in worktree..."

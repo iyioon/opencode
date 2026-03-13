@@ -295,30 +295,23 @@ create_task_context() {
 
     # Only create task.json if it doesn't exist (don't overwrite existing context)
     if [[ ! -f "${tdir}/task.json" ]]; then
-        cat > "${tdir}/task.json" <<EOF
-{
-  "id": "${task_id}",
-  "branch": "${branch_name}",
-  "repo": "${repo}",
-  "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "phase": "research",
-  "pr_number": ${pr_number:-null},
-  "pr_url": ${pr_url:+\"$pr_url\"},
-  "status": "active"
-}
-EOF
-        # Fix null-handling: if pr_url was empty the heredoc produced a bare word
-        # Re-write with proper null if needed
-        if [[ -z "$pr_url" ]]; then
-            local tmp
-            tmp=$(mktemp)
-            jq '.pr_url = null' "${tdir}/task.json" > "$tmp" && mv "$tmp" "${tdir}/task.json"
-        fi
-        if [[ -z "$pr_number" ]]; then
-            local tmp
-            tmp=$(mktemp)
-            jq '.pr_number = null' "${tdir}/task.json" > "$tmp" && mv "$tmp" "${tdir}/task.json"
-        fi
+        jq -n \
+            --arg id "$task_id" \
+            --arg branch "$branch_name" \
+            --arg repo "$repo" \
+            --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson pr_number "${pr_number:-null}" \
+            --arg pr_url "${pr_url:-}" \
+            '{
+                id: $id,
+                branch: $branch,
+                repo: $repo,
+                created: $created,
+                phase: "research",
+                pr_number: $pr_number,
+                pr_url: (if $pr_url == "" then null else $pr_url end),
+                status: "active"
+            }' > "${tdir}/task.json"
     fi
 
     echo "$tdir"
@@ -1425,6 +1418,14 @@ tasks_cleanup() {
     local found=0
 
     [[ -d "$TASKS_DIR" ]] || { log_info "No tasks directory found"; return; }
+
+    # --merged mode uses git ls-remote, which requires a git repository in CWD
+    if [[ "$mode" == "merged" ]]; then
+        if ! git rev-parse --git-dir &>/dev/null; then
+            log_warn "tasks cleanup --merged requires a git repository (run from your project dir)"
+            return 1
+        fi
+    fi
 
     for tfile in "${TASKS_DIR}"/*/task.json; do
         [[ -f "$tfile" ]] || continue

@@ -87,3 +87,44 @@ aid remove <task-id>
 ## License
 
 MIT
+
+## AI Workflow
+
+The AI follows a structured **Plan → Implement → Review → Fix** cycle, orchestrated by the `dispatch` agent.
+
+### Cycle
+1.  **Understand (Plan):** The AI analyzes the task and explores the codebase.
+    *   *Delegation:* Uses `@explore` agent if the relevant files are unknown or a broad search is needed.
+2.  **Implement:** The AI writes code, creates files, and runs commands.
+    *   *Strategy:* It works incrementally, committing after logical units of work.
+3.  **Review:** Before finishing, the AI requests a self-review.
+    *   *Delegation:* Delegates to `@reviewer` agent.
+    *   *Reason:* The `@reviewer` is a separate, read-only agent with a strict prompt to find bugs, security issues, and incomplete implementation. This provides an objective "second pair of eyes" and prevents hallucinated correctness.
+4.  **Fix:** If the reviewer returns `NEEDS_FIXES`, the `dispatch` agent addresses the issues and requests another review (up to 3 cycles).
+5.  **Ship:** Once approved (`PASS`), the AI pushes changes and creates a Pull Request.
+
+### Delegation Justification
+*   **Dispatch Agent (`agents/dispatch.md`):** The general-purpose orchestrator. It maintains the overall task context and makes decisions. It delegates to specialized agents to keep its own context clean and focused on implementation.
+*   **Explore Agent (`task: explore`):** Optimized for code navigation and search. Used to quickly locate relevant files without cluttering the main agent's context with search results.
+*   **Reviewer Agent (`agents/reviewer.md`):** Optimized for critique. It has no write access, forcing it to be objective. Segregating review into a separate agent reduces bias, as the implementing agent is often biased towards its own code.
+
+## Configuration
+
+You can customize the AI's behavior by editing the configuration files in `~/.config/opencode`.
+
+### Global Configuration (`opencode.json`)
+Configure MCP servers, permissions, and environment variables.
+*   **MCP Servers:** Add/remove tools like `context7` or `gh_grep`.
+*   **Permissions:** Control file access and command execution.
+
+### Agent Configuration (`agents/*.md`)
+Customize agent behavior, models, and system prompts.
+*   **Prompt:** Edit the text to change instructions or persona.
+*   **Model:** Change `model: github-copilot/gemini-3-pro-preview` to other available models.
+*   **Temperature:** Adjust creativity (lower for coding, higher for creative writing).
+*   **Tools:** Enable/disable specific tools for an agent.
+
+### Command Configuration (`commands/*.md`)
+Define custom slash commands (e.g., `/work`, `/create-pr`).
+*   Map commands to specific agents and provide initial instructions.
+

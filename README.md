@@ -53,6 +53,7 @@ aid new "task" → AI works → PR created → Human reviews → aid <id> (auto-
 | `working` | AI is actively working |
 | `awaiting-review` | PR created, waiting for human |
 | `needs-changes` | Human requested changes |
+| `ready-to-merge` | PR approved or LGTM |
 
 ## Task Removal
 

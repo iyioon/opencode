@@ -842,6 +842,7 @@ ${BOLD}STATUSES${NC}
   ${BLUE}working${NC}          AI is actively working
   ${CYAN}awaiting-review${NC}  PR created, waiting for human review
   ${YELLOW}needs-changes${NC}    Human requested changes or left unresolved threads
+  ${GREEN}ready-to-merge${NC}   PR approved or LGTM
 
 ${BOLD}EXAMPLES${NC}
   aid new "Fix login timeout bug"

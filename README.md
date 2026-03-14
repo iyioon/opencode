@@ -40,11 +40,22 @@ aid new "task" → AI works → PR created → Human reviews → aid <id> (auto-
 
 1. `aid new` creates a worktree and launches OpenCode
 2. AI explores → plans → implements → self-reviews → creates PR
-3. Human reviews PR on GitHub:
-   - **Approve**: `aid <task-id>` auto-merges and cleans up
-   - **Request changes**: `aid <task-id>` addresses feedback
-   - **Merge conflicts**: `aid <task-id>` detects conflicts and assigns AI to fix
-4. `aid approve <task-id>` to manually merge if needed
+3. **Human Review:**
+   - Run `aid view <task-id>` to open the PR on GitHub.
+   - **Leave Feedback:** Comment on specific lines or submit a review requesting changes.
+   - **Approve:** Submit an approval review or comment "LGTM".
+4. **Resume (`aid <task-id>`):**
+   - **Fixes:** If you requested changes, the AI scrapes your comments, plans a fix, implements it, and pushes updates.
+   - **Merge:** If you approved (or commented "LGTM"), the tool automatically merges the PR and deletes the local worktree.
+5. `aid approve <task-id>` to manually merge if needed
+
+## How Feedback Works
+
+When you run `aid <task-id>` on a task with requested changes:
+1. The tool fetches all unresolved comments and review threads from the GitHub PR.
+2. It passes this feedback to the AI agent as a new prompt.
+3. The AI implements the requested fixes and pushes to the same branch.
+4. You review the updates on GitHub and repeat the cycle until approved.
 
 ## Statuses
 

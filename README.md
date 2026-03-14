@@ -39,14 +39,14 @@ aid new "task" → AI works → PR created → Human reviews → aid <id> (auto-
 ```
 
 1. `aid new` creates a worktree and launches OpenCode
-2. AI explores → plans → implements → self-reviews → creates PR
+2. AI explores → plans → implements → requests review → creates PR
 3. **Human Review:**
    - Run `aid view <task-id>` to open the PR on GitHub.
    - **Leave Feedback:** Comment on specific lines or submit a review requesting changes.
    - **Approve:** Submit an approval review or comment "LGTM".
 4. **Resume (`aid <task-id>`):**
-   - **Fixes:** If you requested changes, the AI scrapes your comments, plans a fix, implements it, and pushes updates.
-   - **Merge:** If you approved (or commented "LGTM"), the tool automatically merges the PR and deletes the local worktree.
+   - **Fixes:** If there is feedback (changes requested or comments), the AI fetches your comments, plans a fix, implements it, and pushes updates.
+   - **Merge:** If you approved (or commented "LGTM"), the tool automatically merges the PR and cleans up the task (deletes local worktree and branch).
 5. `aid approve <task-id>` to manually merge if needed
 
 ## How Feedback Works
@@ -110,7 +110,7 @@ The AI follows a structured **Understand → Implement → Review → Fix** cycl
     *   *Delegation:* Uses the built-in `@explore` agent if the relevant files are unknown or a broad search is needed.
 2.  **Implement:** The AI writes code, creates files, and runs commands.
     *   *Strategy:* It works incrementally, committing after logical units of work.
-3.  **Review:** Before finishing, the AI requests a self-review.
+3. **Review:** Before finishing, the AI requests a code review.
     *   *Delegation:* Delegates to `@reviewer` agent.
     *   *Reason:* The `@reviewer` is a separate, read-only agent with a strict prompt to find bugs, security issues, and incomplete implementation. This provides an objective "second pair of eyes" and prevents hallucinated correctness.
 4.  **Fix:** If the reviewer returns `NEEDS_FIXES`, the `dispatch` agent addresses the issues and requests another review (up to 3 cycles).

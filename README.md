@@ -24,6 +24,7 @@ source ~/.bashrc  # or ~/.zshrc
 ```bash
 aid new "Add dark mode toggle"           # Start new task
 aid new https://github.com/o/r/issues/1  # From GitHub issue
+aid new https://github.com/o/r/pull/1    # From GitHub PR (fetches description, comments, reviews)
 aid status                               # List tasks
 aid view <task-id>                       # Open PR in browser
 aid <task-id>                            # Address feedback or conflicts (auto-merges if approved)

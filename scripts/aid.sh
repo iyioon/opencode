@@ -280,6 +280,8 @@ cmd_new() {
     repo=$(get_current_repo_path) || repo=""
 
     # Parse input
+    local is_pr_input=false
+    local pr_number_input=""
     if is_github_issue_url "$input"; then
         require_cmd gh
         source_url="$input"
@@ -293,6 +295,69 @@ cmd_new() {
             die "Failed to fetch issue"
         source="$issue_body"
         repo="$issue_repo"
+    elif is_github_pr_url "$input"; then
+        require_cmd gh
+        is_pr_input=true
+        source_url="$input"
+        local pr_repo
+        pr_repo=$(extract_repo_path "$input")
+        pr_number_input=$(extract_number "$input")
+        repo="$pr_repo"
+
+        # Check if a task already tracks this PR
+        local existing_task
+        existing_task=$(find_task_by_pr "$input" 2>/dev/null) || true
+        if [[ -n "$existing_task" ]]; then
+            die "A task already tracks this PR: $existing_task. Use 'aid $existing_task' to resume."
+        fi
+
+        # Check PR state
+        local pr_state
+        pr_state=$(gh pr view "$pr_number_input" --repo "$pr_repo" --json state --jq '.state' 2>/dev/null) || \
+            die "Failed to fetch PR #${pr_number_input}"
+        case "$pr_state" in
+            MERGED) die "PR #${pr_number_input} is already merged." ;;
+            CLOSED) die "PR #${pr_number_input} is closed." ;;
+        esac
+
+        # Fetch PR description
+        log_info "Fetching PR #${pr_number_input} from ${pr_repo}..."
+        local pr_body
+        pr_body=$(gh pr view "$pr_number_input" --repo "$pr_repo" --json title,body,number \
+            --jq '"PR #" + (.number|tostring) + ": " + .title + "\n\n" + (.body // "")') || \
+            die "Failed to fetch PR"
+
+        # Fetch PR feedback (comments, reviews, review threads) — same as cmd_resume
+        local pr_feedback=""
+        pr_feedback=$(gh pr view "$pr_number_input" --repo "$pr_repo" \
+            --json comments,reviews,reviewThreads \
+            --jq '
+                ([.reviews[] | select(.state != "APPROVED" and (.body // "") != "") |
+                    "Review (" + .state + "): " + .body] +
+                [.comments[] | select((.body // "") != "") |
+                    "Comment: " + .body] +
+                [.reviewThreads[] |
+                    (if .isResolved then "Resolved thread" else "Unresolved thread" end) +
+                    " on " + (.path // "unknown") + ":" + (.line // 0 | tostring) + "\n" +
+                    (.comments[0].body // "")]
+                ) | join("\n\n---\n\n")
+            ' 2>/dev/null) || pr_feedback=""
+
+        # Check for merge conflicts
+        local mergeable_state
+        mergeable_state=$(gh pr view "$pr_number_input" --repo "$pr_repo" --json mergeable --jq '.mergeable' 2>/dev/null) || mergeable_state=""
+        if [[ "$mergeable_state" == "CONFLICTING" ]]; then
+            if [[ -n "$pr_feedback" ]]; then
+                pr_feedback="${pr_feedback}"$'\n\n'
+            fi
+            pr_feedback="${pr_feedback}SYSTEM ALERT: The PR has merge conflicts. Please resolve them."
+        fi
+
+        # Assemble full source
+        source="$pr_body"
+        if [[ -n "$pr_feedback" ]]; then
+            source="${source}"$'\n\n--- PR Feedback ---\n\n'"${pr_feedback}"
+        fi
     else
         source="$input"
         source_url=""
@@ -305,19 +370,38 @@ cmd_new() {
     log_info "Fetching latest from origin..."
     git fetch origin 2>/dev/null || die "Failed to fetch from origin"
 
-    # Determine base branch
-    local base_branch
-    base_branch=$(get_base_branch)
-
     # Create worktree
     local worktree="${WORKTREES_DIR}/${task_id}"
-    log_info "Creating worktree: ${worktree}"
-    git worktree add "$worktree" -b "$branch" "origin/${base_branch}" || \
-        die "Failed to create worktree"
+    if [[ "$is_pr_input" == true ]]; then
+        # Checkout the PR's existing head branch
+        local pr_head_branch
+        pr_head_branch=$(gh pr view "$pr_number_input" --repo "$repo" --json headRefName --jq '.headRefName' 2>/dev/null) || \
+            die "Failed to get PR head branch"
+        branch="$pr_head_branch"
+
+        log_info "Creating worktree on PR branch: ${branch}"
+        git worktree add "$worktree" "origin/${branch}" || \
+            die "Failed to create worktree for PR branch"
+        # Ensure the local branch tracks the remote
+        (cd "$worktree" && git checkout -B "$branch" "origin/${branch}" && git branch --set-upstream-to="origin/${branch}" "$branch") 2>/dev/null || true
+    else
+        # Determine base branch and create a new branch
+        local base_branch
+        base_branch=$(get_base_branch)
+
+        log_info "Creating worktree: ${worktree}"
+        git worktree add "$worktree" -b "$branch" "origin/${base_branch}" || \
+            die "Failed to create worktree"
+    fi
 
     # Create task record
     create_task "$task_id" "$branch" "$source" "$source_url" "$repo"
     log_success "Created task: ${task_id}"
+
+    # If created from a PR, immediately record the PR link
+    if [[ "$is_pr_input" == true ]]; then
+        update_task_pr "$task_id" "$source_url" "$pr_number_input"
+    fi
 
     # Warn if source was too long
     local source_len=${#source}
@@ -812,6 +896,7 @@ ${BOLD}aid${NC} - AI Development Workflow v${VERSION}
 ${BOLD}USAGE${NC}
   aid new "task description"     Create new task and start working
   aid new <issue-url>            Create task from GitHub issue
+  aid new <pr-url>               Create task from GitHub PR (fetches feedback)
   aid status                     List tasks by status
   aid <task-id>                  Address PR feedback or conflicts (auto-merges if approved)
   aid <pr-url>                   Address PR feedback by PR URL
@@ -846,6 +931,7 @@ ${BOLD}STATUSES${NC}
 ${BOLD}EXAMPLES${NC}
   aid new "Fix login timeout bug"
   aid new https://github.com/owner/repo/issues/42
+  aid new https://github.com/owner/repo/pull/15
   aid status
   aid view aid-20260313-143052
   aid aid-20260313-143052
@@ -863,7 +949,7 @@ main() {
 
     case "$cmd" in
         new)
-            [[ -n "${2:-}" ]] || die "Usage: aid new <task-description|issue-url>"
+            [[ -n "${2:-}" ]] || die "Usage: aid new <task-description|issue-url|pr-url>"
             shift
             cmd_new "$@"
             ;;

@@ -53,6 +53,10 @@ aid new "task" → AI works → PR created → Human reviews → aid <id> (auto-
 | `awaiting-review` | PR created, waiting for human |
 | `needs-changes` | Human requested changes |
 
+## Guides
+
+- [Multi-Device Workflow](docs/multi-device-workflow.md) - Best practices for using `aid` across multiple machines.
+
 ## Structure
 
 ```

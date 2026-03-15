@@ -141,7 +141,7 @@ Configure MCP servers, global permissions, and environment variables.
 ### Agent Configuration (`agents/*.md`)
 Customize agent behavior, models, permissions, and system prompts.
 *   **Prompt:** Edit the text to change instructions or persona.
-*   **Model:** Change the model for each agent (e.g., `dispatch` uses `gemini-3-pro-preview`, `reviewer` uses `claude-sonnet-4.6`).
+*   **Model:** Change the model for each agent (e.g., `dispatch` uses `claude-opus-4.6`, `reviewer` uses `claude-sonnet-4.6`).
 *   **Temperature:** Adjust creativity (lower for coding, higher for creative writing).
 *   **Permissions:** Control file access (`edit: allow`) and command execution (`bash: ...`) for each agent.
 *   **Tools:** Enable/disable specific tools for an agent.

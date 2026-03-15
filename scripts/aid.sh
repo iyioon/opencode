@@ -374,7 +374,7 @@ cmd_new() {
     local worktree="${WORKTREES_DIR}/${task_id}"
     if [[ "$is_pr_input" == true ]]; then
         # Fetch PR head branch info (after git fetch so refs are current)
-        local pr_head_branch pr_head_repo_owner pr_is_fork
+        local pr_head_branch pr_head_repo_owner
         pr_head_branch=$(gh pr view "$pr_number_input" --repo "$repo" \
             --json headRefName --jq '.headRefName' 2>/dev/null) || \
             die "Failed to get PR head branch"
@@ -394,11 +394,9 @@ cmd_new() {
         branch="$pr_head_branch"
 
         log_info "Creating worktree on PR branch: ${branch}"
-        # Use --track to check out the remote branch without -b, avoiding
-        # collisions with any pre-existing local branch of the same name.
-        # If a stale local branch exists, remove it first.
+        # Remove any stale local branch of the same name to avoid collisions.
         git branch -D "$branch" 2>/dev/null || true
-        git worktree add --track -b "$branch" "$worktree" "origin/${branch}" || \
+        git worktree add -b "$branch" "$worktree" "origin/${branch}" || \
             die "Failed to create worktree for PR branch"
     else
         # Determine base branch and create a new branch
@@ -415,7 +413,7 @@ cmd_new() {
     log_success "Created task: ${task_id}"
 
     # If created from a PR, record PR link while keeping status as "working"
-    if [[ "$is_pr_input" == true ]]; then
+    if [[ "$is_pr_input" == true && -n "$pr_number_input" ]]; then
         local tdir
         tdir=$(task_dir "$task_id")
         _atomic_task_update "${tdir}/task.json" \
@@ -438,7 +436,7 @@ cmd_new() {
     log_info "Starting OpenCode..."
     (cd "$worktree" && opencode --agent dispatch --prompt "/work ${prompt_source}")
 
-    # After OpenCode exits, check if a PR was created (skip for PR-input tasks)
+    # After OpenCode exits, update task status
     if [[ "$is_pr_input" == true ]]; then
         # Verify actual PR state before setting status
         local post_pr_state
@@ -447,9 +445,13 @@ cmd_new() {
             MERGED|CLOSED)
                 log_info "PR #${pr_number_input} is ${post_pr_state,,}. Run 'aid cleanup' to remove this task."
                 ;;
-            *)
+            OPEN)
                 update_task_status "$task_id" "awaiting-review"
                 log_success "Task ${task_id} has PR: ${source_url}"
+                ;;
+            *)
+                # Network failure or unknown state — keep as working
+                log_warn "Could not verify PR state. Task remains as 'working'. Resume with: aid ${task_id}"
                 ;;
         esac
     else

@@ -28,6 +28,7 @@ aid status                               # List tasks
 aid view <task-id>                       # Open PR in browser
 aid <task-id>                            # Address feedback or conflicts (auto-merges if approved)
 aid approve <task-id>                    # Manually merge and cleanup
+aid remove <task-id>                     # Remove a task (use --force for open PRs)
 aid cleanup                              # Remove merged tasks
 ```
 

@@ -24,6 +24,7 @@ source ~/.bashrc  # or ~/.zshrc
 ```bash
 aid new "Add dark mode toggle"           # Start new task
 aid new https://github.com/o/r/issues/1  # From GitHub issue
+aid new https://github.com/o/r/pull/1    # From GitHub PR (fetches description, comments, reviews)
 aid status                               # List tasks
 aid view <task-id>                       # Open PR in browser
 aid <task-id>                            # Address feedback or conflicts (auto-merges if approved)
@@ -93,6 +94,14 @@ aid remove <task-id>
 ## Guides
 
 - [Multi-Device Workflow](docs/multi-device-workflow.md) - Best practices for using `aid` across multiple machines.
+
+## FAQ
+
+**What's the difference between `aid new <pr-url>` and `aid <pr-url>`?**
+
+`aid new <pr-url>` adopts a PR that isn't tracked locally — it creates a new task, fetches the PR description, comments, reviews, and merge conflict status, checks out the PR branch, and launches the AI agent with all that context. Use this for PRs created outside of `aid` (e.g. from another machine or by a teammate).
+
+`aid <pr-url>` resumes a PR that is already tracked locally (created by a previous `aid new`). It looks up the existing task by its PR URL and re-fetches live feedback. If no local task tracks that PR, it will fail — use `aid new <pr-url>` instead.
 
 ## Structure
 

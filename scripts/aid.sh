@@ -280,6 +280,8 @@ cmd_new() {
     repo=$(get_current_repo_path) || repo=""
 
     # Parse input
+    local is_pr_input=false
+    local pr_number_input=""
     if is_github_issue_url "$input"; then
         require_cmd gh
         source_url="$input"
@@ -293,6 +295,69 @@ cmd_new() {
             die "Failed to fetch issue"
         source="$issue_body"
         repo="$issue_repo"
+    elif is_github_pr_url "$input"; then
+        require_cmd gh
+        is_pr_input=true
+        source_url="$input"
+        local pr_repo
+        pr_repo=$(extract_repo_path "$input")
+        pr_number_input=$(extract_number "$input")
+        repo="$pr_repo"
+
+        # Check if a task already tracks this PR
+        local existing_task
+        existing_task=$(find_task_by_pr "$input" 2>/dev/null) || true
+        if [[ -n "$existing_task" ]]; then
+            die "A task already tracks this PR: $existing_task. Use 'aid $existing_task' to resume."
+        fi
+
+        # Check PR state
+        local pr_state
+        pr_state=$(gh pr view "$pr_number_input" --repo "$pr_repo" --json state --jq '.state' 2>/dev/null) || \
+            die "Failed to fetch PR #${pr_number_input}"
+        case "$pr_state" in
+            MERGED) die "PR #${pr_number_input} is already merged." ;;
+            CLOSED) die "PR #${pr_number_input} is closed." ;;
+        esac
+
+        # Fetch PR description
+        log_info "Fetching PR #${pr_number_input} from ${pr_repo}..."
+        local pr_body
+        pr_body=$(gh pr view "$pr_number_input" --repo "$pr_repo" --json title,body,number \
+            --jq '"PR #" + (.number|tostring) + ": " + .title + "\n\n" + (.body // "")') || \
+            die "Failed to fetch PR"
+
+        # Fetch PR feedback (comments, reviews, review threads) — same as cmd_resume
+        local pr_feedback=""
+        pr_feedback=$(gh pr view "$pr_number_input" --repo "$pr_repo" \
+            --json comments,reviews,reviewThreads \
+            --jq '
+                ([.reviews[] | select(.state != "APPROVED" and (.body // "") != "") |
+                    "Review (" + .state + "): " + .body] +
+                [.comments[] | select((.body // "") != "") |
+                    "Comment: " + .body] +
+                [.reviewThreads[] |
+                    (if .isResolved then "Resolved thread" else "Unresolved thread" end) +
+                    " on " + (.path // "unknown") + ":" + (.line // 0 | tostring) + "\n" +
+                    (.comments[0].body // "")]
+                ) | join("\n\n---\n\n")
+            ' 2>/dev/null) || pr_feedback=""
+
+        # Check for merge conflicts
+        local mergeable_state
+        mergeable_state=$(gh pr view "$pr_number_input" --repo "$pr_repo" --json mergeable --jq '.mergeable' 2>/dev/null) || mergeable_state=""
+        if [[ "$mergeable_state" == "CONFLICTING" ]]; then
+            if [[ -n "$pr_feedback" ]]; then
+                pr_feedback="${pr_feedback}"$'\n\n'
+            fi
+            pr_feedback="${pr_feedback}SYSTEM ALERT: The PR has merge conflicts. Please resolve them."
+        fi
+
+        # Assemble full source
+        source="$pr_body"
+        if [[ -n "$pr_feedback" ]]; then
+            source="${source}"$'\n\n--- PR Feedback ---\n\n'"${pr_feedback}"
+        fi
     else
         source="$input"
         source_url=""
@@ -305,19 +370,57 @@ cmd_new() {
     log_info "Fetching latest from origin..."
     git fetch origin 2>/dev/null || die "Failed to fetch from origin"
 
-    # Determine base branch
-    local base_branch
-    base_branch=$(get_base_branch)
-
     # Create worktree
     local worktree="${WORKTREES_DIR}/${task_id}"
-    log_info "Creating worktree: ${worktree}"
-    git worktree add "$worktree" -b "$branch" "origin/${base_branch}" || \
-        die "Failed to create worktree"
+    if [[ "$is_pr_input" == true ]]; then
+        # Fetch PR head branch info (after git fetch so refs are current)
+        local pr_head_branch pr_head_repo_owner
+        pr_head_branch=$(gh pr view "$pr_number_input" --repo "$repo" \
+            --json headRefName --jq '.headRefName' 2>/dev/null) || \
+            die "Failed to get PR head branch"
+        pr_head_repo_owner=$(gh pr view "$pr_number_input" --repo "$repo" \
+            --json headRepositoryOwner --jq '.headRepositoryOwner.login' 2>/dev/null) || pr_head_repo_owner=""
+        local base_repo_owner
+        base_repo_owner=$(echo "$repo" | cut -d/ -f1)
+
+        # Detect fork PRs: head repo owner differs from base repo owner
+        if [[ -n "$pr_head_repo_owner" && "$pr_head_repo_owner" != "$base_repo_owner" ]]; then
+            log_info "PR is from a fork (${pr_head_repo_owner}). Fetching fork ref..."
+            git fetch "https://github.com/${pr_head_repo_owner}/$(echo "$repo" | cut -d/ -f2).git" \
+                "${pr_head_branch}:refs/remotes/origin/${pr_head_branch}" 2>/dev/null || \
+                die "Failed to fetch fork branch '${pr_head_branch}' from ${pr_head_repo_owner}"
+        fi
+
+        branch="$pr_head_branch"
+
+        log_info "Creating worktree on PR branch: ${branch}"
+        # Remove any stale local branch of the same name to avoid collisions.
+        git branch -D "$branch" 2>/dev/null || true
+        git worktree add -b "$branch" "$worktree" "origin/${branch}" || \
+            die "Failed to create worktree for PR branch"
+    else
+        # Determine base branch and create a new branch
+        local base_branch
+        base_branch=$(get_base_branch)
+
+        log_info "Creating worktree: ${worktree}"
+        git worktree add "$worktree" -b "$branch" "origin/${base_branch}" || \
+            die "Failed to create worktree"
+    fi
 
     # Create task record
     create_task "$task_id" "$branch" "$source" "$source_url" "$repo"
     log_success "Created task: ${task_id}"
+
+    # If created from a PR, record PR link while keeping status as "working"
+    if [[ "$is_pr_input" == true && -n "$pr_number_input" ]]; then
+        local tdir
+        tdir=$(task_dir "$task_id")
+        _atomic_task_update "${tdir}/task.json" \
+            '.pr_url = $url | .pr_number = $num' \
+            --arg     url "$source_url" \
+            --argjson num "$pr_number_input"
+    fi
 
     # Warn if source was too long
     local source_len=${#source}
@@ -333,16 +436,35 @@ cmd_new() {
     log_info "Starting OpenCode..."
     (cd "$worktree" && opencode --agent dispatch --prompt "/work ${prompt_source}")
 
-    # After OpenCode exits, check if a PR was created
-    local pr_url pr_number
-    pr_url=$(cd "$worktree" && gh pr view --json url -q '.url' 2>/dev/null) || true
-
-    if [[ -n "$pr_url" ]]; then
-        pr_number=$(extract_number "$pr_url")
-        update_task_pr "$task_id" "$pr_url" "$pr_number"
-        log_success "Task ${task_id} has PR: ${pr_url}"
+    # After OpenCode exits, update task status
+    if [[ "$is_pr_input" == true ]]; then
+        # Verify actual PR state before setting status
+        local post_pr_state
+        post_pr_state=$(gh pr view "$pr_number_input" --repo "$repo" --json state --jq '.state' 2>/dev/null) || post_pr_state=""
+        case "$post_pr_state" in
+            MERGED|CLOSED)
+                log_info "PR #${pr_number_input} is ${post_pr_state,,}. Run 'aid cleanup' to remove this task."
+                ;;
+            OPEN)
+                update_task_status "$task_id" "awaiting-review"
+                log_success "Task ${task_id} has PR: ${source_url}"
+                ;;
+            *)
+                # Network failure or unknown state — keep as working
+                log_warn "Could not verify PR state. Task remains as 'working'. Resume with: aid ${task_id}"
+                ;;
+        esac
     else
-        log_info "No PR created yet. Resume with: aid ${task_id}"
+        local pr_url pr_number
+        pr_url=$(cd "$worktree" && gh pr view --json url -q '.url' 2>/dev/null) || true
+
+        if [[ -n "$pr_url" ]]; then
+            pr_number=$(extract_number "$pr_url")
+            update_task_pr "$task_id" "$pr_url" "$pr_number"
+            log_success "Task ${task_id} has PR: ${pr_url}"
+        else
+            log_info "No PR created yet. Resume with: aid ${task_id}"
+        fi
     fi
 }
 
@@ -812,9 +934,10 @@ ${BOLD}aid${NC} - AI Development Workflow v${VERSION}
 ${BOLD}USAGE${NC}
   aid new "task description"     Create new task and start working
   aid new <issue-url>            Create task from GitHub issue
+  aid new <pr-url>               Create task from GitHub PR (fetches feedback)
   aid status                     List tasks by status
   aid <task-id>                  Address PR feedback or conflicts (auto-merges if approved)
-  aid <pr-url>                   Address PR feedback by PR URL
+  aid <pr-url>                   Resume a locally tracked PR by its URL
   aid view <task-id>             Open PR in browser or show task info
   aid approve <task-id>          Merge PR and cleanup
   aid remove <task-id>           Remove a task (use --force to delete open PRs)
@@ -847,6 +970,7 @@ ${BOLD}STATUSES${NC}
 ${BOLD}EXAMPLES${NC}
   aid new "Fix login timeout bug"
   aid new https://github.com/owner/repo/issues/42
+  aid new https://github.com/owner/repo/pull/15
   aid status
   aid view aid-20260313-143052
   aid aid-20260313-143052
@@ -864,7 +988,7 @@ main() {
 
     case "$cmd" in
         new)
-            [[ -n "${2:-}" ]] || die "Usage: aid new <task-description|issue-url>"
+            [[ -n "${2:-}" ]] || die "Usage: aid new <task-description|issue-url|pr-url>"
             shift
             cmd_new "$@"
             ;;

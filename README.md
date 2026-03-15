@@ -28,6 +28,7 @@ aid status                               # List tasks
 aid view <task-id>                       # Open PR in browser
 aid <task-id>                            # Address feedback or conflicts (auto-merges if approved)
 aid approve <task-id>                    # Manually merge and cleanup
+aid remove <task-id>                     # Remove a task (use --force for open PRs)
 aid cleanup                              # Remove merged tasks
 ```
 
@@ -52,6 +53,17 @@ aid new "task" → AI works → PR created → Human reviews → aid <id> (auto-
 | `working` | AI is actively working |
 | `awaiting-review` | PR created, waiting for human |
 | `needs-changes` | Human requested changes |
+
+## Task Removal
+
+To manually delete a task's local environment (worktree, branch, config):
+
+```bash
+aid remove <task-id>
+```
+
+- **Open PRs**: Fails by default to prevent losing unmerged work. Use `--force` to delete the local task (the PR on GitHub will remain open).
+- **Merged/Closed**: Safely deletes the local artifacts. Useful if you want to clean up a specific task without running a full `cleanup`.
 
 ## Guides
 

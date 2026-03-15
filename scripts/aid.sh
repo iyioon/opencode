@@ -239,6 +239,25 @@ find_task_by_branch() {
     return 1
 }
 
+_cleanup_task_artifacts() {
+    local task_id="$1"
+    local worktree="$2"
+    local branch="$3"
+
+    # Remove worktree
+    if [[ -d "$worktree" ]]; then
+        git worktree remove "$worktree" --force 2>/dev/null || rm -rf "$worktree"
+    fi
+
+    # Remove local branch
+    if [[ -n "$branch" ]]; then
+        git branch -D "$branch" 2>/dev/null || true
+    fi
+
+    # Remove task record
+    rm -rf "${TASKS_DIR}/${task_id}"
+}
+
 # ==============================================================================
 # Commands
 # ==============================================================================
@@ -683,19 +702,8 @@ cmd_approve() {
 
     log_success "PR #${pr_number} merged"
 
-    # Cleanup worktree
-    if [[ -d "$worktree" ]]; then
-        log_info "Removing worktree..."
-        git worktree remove "$worktree" --force 2>/dev/null || rm -rf "$worktree"
-    fi
-
-    # Cleanup local branch if it still exists
-    if [[ -n "$branch" ]]; then
-        git branch -D "$branch" 2>/dev/null || true
-    fi
-
-    # Remove task record
-    rm -rf "${TASKS_DIR}/${task_id}"
+    log_info "Removing artifacts..."
+    _cleanup_task_artifacts "$task_id" "$worktree" "$branch"
 
     log_success "Task ${task_id} completed and cleaned up"
 }
@@ -740,20 +748,7 @@ cmd_cleanup() {
 
         if [[ "$should_clean" == "true" ]]; then
             log_info "Cleaning: ${task_id}"
-
-            # Remove worktree
-            if [[ -d "$worktree" ]]; then
-                git worktree remove "$worktree" --force 2>/dev/null || rm -rf "$worktree"
-            fi
-
-            # Remove local branch
-            if [[ -n "$branch" ]]; then
-                git branch -D "$branch" 2>/dev/null || true
-            fi
-
-            # Remove task record
-            rm -rf "${TASKS_DIR}/${task_id}"
-
+            _cleanup_task_artifacts "$task_id" "$worktree" "$branch"
             cleaned=$((cleaned + 1))
         fi
     done
@@ -763,6 +758,51 @@ cmd_cleanup() {
     else
         log_info "No tasks to clean"
     fi
+}
+
+cmd_remove() {
+    local input="$1"
+    local force="${2:-}"
+    local task_id
+
+    require_cmd jq
+    require_cmd gh
+    require_cmd git
+
+    # Resolve task ID
+    if is_github_pr_url "$input"; then
+        task_id=$(find_task_by_pr "$input") || die "No task found for PR: $input"
+    elif [[ -d "${TASKS_DIR}/${input}" ]]; then
+        task_id="$input"
+    else
+        die "Task not found: $input"
+    fi
+
+    local pr_number pr_url repo worktree branch
+    pr_number=$(get_task_field "$task_id" "pr_number")
+    pr_url=$(get_task_field "$task_id" "pr_url")
+    repo=$(get_task_field "$task_id" "repo")
+    worktree=$(get_task_field "$task_id" "worktree")
+    branch=$(get_task_field "$task_id" "branch")
+
+    # Check for open PR
+    if [[ -n "$pr_number" && -n "$repo" ]]; then
+        local pr_state
+        pr_state=$(gh pr view "$pr_number" --repo "$repo" --json state -q '.state' 2>/dev/null) || pr_state=""
+        
+        if [[ "$pr_state" == "OPEN" ]]; then
+            if [[ "$force" != "--force" && "$force" != "-f" ]]; then
+                log_warn "Task has an open PR: ${pr_url:-#$pr_number}"
+                log_warn "Use 'aid remove ${task_id} --force' to delete local task anyway."
+                log_info "To close the PR first, run: gh pr close ${pr_url:-$pr_number}"
+                return 1
+            fi
+        fi
+    fi
+
+    log_info "Removing task ${task_id}..."
+    _cleanup_task_artifacts "$task_id" "$worktree" "$branch"
+    log_success "Task ${task_id} removed"
 }
 
 cmd_help() {
@@ -777,6 +817,7 @@ ${BOLD}USAGE${NC}
   aid <pr-url>                   Address PR feedback by PR URL
   aid view <task-id>             Open PR in browser or show task info
   aid approve <task-id>          Merge PR and cleanup
+  aid remove <task-id>           Remove a task (use --force to delete open PRs)
   aid cleanup                    Remove merged/closed tasks
   aid help                       Show this help
 
@@ -836,6 +877,10 @@ main() {
         approve)
             [[ -n "${2:-}" ]] || die "Usage: aid approve <task-id>"
             cmd_approve "$2"
+            ;;
+        remove|rm|delete)
+            [[ -n "${2:-}" ]] || die "Usage: aid remove <task-id>"
+            cmd_remove "$2" "${3:-}"
             ;;
         cleanup|clean)
             cmd_cleanup

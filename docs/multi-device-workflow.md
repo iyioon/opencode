@@ -38,7 +38,7 @@ Treat each device's `aid` instance as a separate worker.
 
 ### 3. Strict Git Hygiene
 - **Pull frequently:** Before starting `aid new`, ensure your main/master branch is up to date.
-- **Prune often:** Run `aid cleanup` regularly on each device to remove stale worktrees and keep the local state clean.
+- **Prune often:** Run `aid cleanup` regularly on each device to remove stale worktrees. Use `aid remove <task-id>` to discard specific tasks you no longer need on this device.
 
 ### 4. Containerized/Standardized Environments
 - Use tools like `.nvmrc`, `.python-version`, or Docker containers to ensure the development environment is identical across devices. This minimizes "it works on my machine" issues when the AI generates code.

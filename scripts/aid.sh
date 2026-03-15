@@ -934,7 +934,7 @@ ${BOLD}aid${NC} - AI Development Workflow v${VERSION}
 ${BOLD}USAGE${NC}
   aid new "task description"     Create new task and start working
   aid new <issue-url>            Create task from GitHub issue
-  aid new <pr-url>               Adopt a PR not yet tracked locally (fetches feedback)
+  aid new <pr-url>               Create task from GitHub PR (fetches feedback)
   aid status                     List tasks by status
   aid <task-id>                  Address PR feedback or conflicts (auto-merges if approved)
   aid <pr-url>                   Resume a locally tracked PR by its URL
@@ -943,14 +943,6 @@ ${BOLD}USAGE${NC}
   aid remove <task-id>           Remove a task (use --force to delete open PRs)
   aid cleanup                    Remove merged/closed tasks
   aid help                       Show this help
-
-${BOLD}PR URLs${NC}
-  ${CYAN}aid new <pr-url>${NC}  Adopt a PR that isn't tracked locally. Creates a new task,
-                    fetches the PR description, comments, reviews, and conflict
-                    status, checks out the PR branch, and launches the AI agent.
-  ${CYAN}aid <pr-url>${NC}      Resume a PR that is already tracked (from a previous aid new).
-                    Looks up the existing task by URL and re-fetches live feedback.
-                    Fails if no local task tracks that PR — use aid new instead.
 
 ${BOLD}WORKFLOW${NC}
   1. ${CYAN}aid new "Add feature X"${NC}

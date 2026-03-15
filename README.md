@@ -33,12 +33,6 @@ aid remove <task-id>                     # Remove a task (use --force for open P
 aid cleanup                              # Remove merged tasks
 ```
 
-### `aid new <pr-url>` vs `aid <pr-url>`
-
-- **`aid new <pr-url>`** — Adopt a PR that isn't tracked locally. Creates a new task, fetches the PR description, comments, reviews, and merge conflict status, checks out the PR branch, and launches the AI agent with all that context. Use this for PRs created outside of `aid` (e.g. from another machine, or by a teammate).
-
-- **`aid <pr-url>`** — Resume a PR that is already tracked locally (created by a previous `aid new`). Looks up the existing task by its PR URL and re-fetches live feedback. Fails if no local task tracks that PR — use `aid new <pr-url>` instead.
-
 ## Workflow
 
 ```
@@ -75,6 +69,14 @@ aid remove <task-id>
 ## Guides
 
 - [Multi-Device Workflow](docs/multi-device-workflow.md) - Best practices for using `aid` across multiple machines.
+
+## FAQ
+
+**What's the difference between `aid new <pr-url>` and `aid <pr-url>`?**
+
+`aid new <pr-url>` adopts a PR that isn't tracked locally — it creates a new task, fetches the PR description, comments, reviews, and merge conflict status, checks out the PR branch, and launches the AI agent with all that context. Use this for PRs created outside of `aid` (e.g. from another machine or by a teammate).
+
+`aid <pr-url>` resumes a PR that is already tracked locally (created by a previous `aid new`). It looks up the existing task by its PR URL and re-fetches live feedback. If no local task tracks that PR, it will fail — use `aid new <pr-url>` instead.
 
 ## Structure
 

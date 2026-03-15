@@ -54,6 +54,17 @@ aid new "task" → AI works → PR created → Human reviews → aid <id> (auto-
 | `awaiting-review` | PR created, waiting for human |
 | `needs-changes` | Human requested changes |
 
+## Task Removal
+
+To manually delete a task's local environment (worktree, branch, config):
+
+```bash
+aid remove <task-id>
+```
+
+- **Open PRs**: Fails by default to prevent losing unmerged work. Use `--force` to delete the local task (the PR on GitHub will remain open).
+- **Merged/Closed**: Safely deletes the local artifacts. Useful if you want to clean up a specific task without running a full `cleanup`.
+
 ## Guides
 
 - [Multi-Device Workflow](docs/multi-device-workflow.md) - Best practices for using `aid` across multiple machines.

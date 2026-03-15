@@ -428,6 +428,13 @@ _import_pr() {
     require_cmd jq
     require_cmd git
 
+    # Ensure we're in a git repo
+    git rev-parse --git-dir &>/dev/null || die "Not in a git repository"
+
+    if ! is_github_pr_url "$input"; then
+        die "Invalid PR URL: $input"
+    fi
+
     log_info "Importing PR..."
 
     # Extract info
@@ -442,7 +449,7 @@ _import_pr() {
 
     local title body branch url state
     title=$(echo "$pr_json" | jq -r '.title')
-    body=$(echo "$pr_json" | jq -r '.body')
+    body=$(echo "$pr_json" | jq -r '.body // ""')
     branch=$(echo "$pr_json" | jq -r '.headRefName')
     url=$(echo "$pr_json" | jq -r '.url')
     state=$(echo "$pr_json" | jq -r '.state')
@@ -1034,6 +1041,7 @@ main() {
         *)
             # Check if it's a task ID or PR URL to resume
             if is_github_pr_url "$cmd"; then
+                local task_id
                 if task_id=$(find_task_by_pr "$cmd"); then
                     cmd_resume "$task_id"
                 else

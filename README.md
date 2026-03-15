@@ -8,9 +8,13 @@ AI development workflow for OpenCode.
 # Clone into OpenCode config
 git clone https://github.com/iyioon/aid.git ~/.config/opencode
 
-# Add to PATH
+# Symlink to ~/.local/bin
 mkdir -p ~/.local/bin
 ln -sf ~/.config/opencode/scripts/aid.sh ~/.local/bin/aid
+
+# If ~/.local/bin is not already in your PATH, add it
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc  # or ~/.zshrc
+source ~/.bashrc  # or ~/.zshrc
 ```
 
 **Requirements:** `git`, `gh` (authenticated), `opencode`, `jq`

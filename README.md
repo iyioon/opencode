@@ -58,6 +58,18 @@ When you run `aid <task-id>` on a task with requested changes:
 4. The AI implements the requested fixes and pushes to the same branch.
 5. You review the updates on GitHub and repeat the cycle until approved.
 
+## Recommended Workflow
+
+1. **Start a task:** Run `aid new "description"` to create a new task in a clean worktree. The AI will begin coding immediately.
+2. **Let the AI work:** The AI explores, implements, reviews its own code, and creates a pull request autonomously.
+3. **Refine interactively:** Keep the OpenCode session open and continue to iterate with the AI in real time. You can ask follow-up questions, request changes, or guide the implementation.
+4. **Step away when needed:** If you need to close the terminal or work on something else, the task persists. The worktree and PR remain until merged. You can:
+   - Leave comments on the PR through GitHub.
+   - Run `aid <task-id>` later to resume. The AI picks up your PR comments and continues. (Note: resuming starts a fresh AI context, so prior conversational context is lost.)
+5. **Review and merge:** Once satisfied, approve the PR on GitHub and run `aid <task-id>` to auto-merge, or use `aid approve <task-id>`.
+
+> **Tip:** Use [tmux](https://github.com/tmux/tmux) to run `aid` in a background pane. This lets you keep tasks running while you work on other things in separate tabs.
+
 ## Statuses
 
 | Status | Meaning |
@@ -96,10 +108,6 @@ aid remove <task-id>
 ├── tasks/              # Task state
 └── worktrees/          # Git worktrees
 ```
-
-## License
-
-MIT
 
 ## AI Workflow
 
@@ -141,4 +149,8 @@ Customize agent behavior, models, permissions, and system prompts.
 ### Command Configuration (`commands/*.md`)
 Define custom slash commands (e.g., `/work`, `/create-pr`).
 *   Map commands to specific agents and provide initial instructions.
+
+## License
+
+MIT
 

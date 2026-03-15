@@ -19,6 +19,18 @@ source ~/.bashrc  # or ~/.zshrc
 
 **Requirements:** `git`, `gh` (authenticated), `opencode`, `jq`
 
+### Shell Completion
+
+Enable tab completion for subcommands and task IDs:
+
+```bash
+# Bash (add to ~/.bashrc)
+eval "$(aid completion bash)"
+
+# Zsh (add to ~/.zshrc)
+eval "$(aid completion zsh)"
+```
+
 ## Usage
 
 ```bash

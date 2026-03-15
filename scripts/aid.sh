@@ -819,6 +819,7 @@ ${BOLD}USAGE${NC}
   aid approve <task-id>          Merge PR and cleanup
   aid remove <task-id>           Remove a task (use --force to delete open PRs)
   aid cleanup                    Remove merged/closed tasks
+  aid completion <shell>         Output shell completion (bash, zsh)
   aid help                       Show this help
 
 ${BOLD}WORKFLOW${NC}
@@ -856,6 +857,157 @@ EOF
 }
 
 # ==============================================================================
+# Shell Completion
+# ==============================================================================
+
+cmd_completion() {
+    local shell="${1:-}"
+
+    case "$shell" in
+        bash)
+            cat <<'BASH_COMPLETION'
+_aid_completions() {
+    local cur prev commands
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    commands="new status list ls view approve remove rm delete cleanup clean help --help -h --version -v completion"
+
+    if [[ $COMP_CWORD -eq 1 ]]; then
+        # First arg: complete subcommands + task IDs
+        local tasks=""
+        local tasks_dir="${HOME}/.config/opencode/tasks"
+        if [[ -d "$tasks_dir" ]]; then
+            tasks=$(command ls -1d "$tasks_dir"/*/ 2>/dev/null | xargs -r -n1 basename)
+        fi
+        mapfile -t COMPREPLY < <(compgen -W "${commands} ${tasks}" -- "$cur")
+        return
+    fi
+
+    if [[ $COMP_CWORD -eq 2 ]]; then
+        # Second arg: depends on subcommand
+        case "${COMP_WORDS[1]}" in
+            view|approve|remove|rm|delete)
+                local tasks=""
+                local tasks_dir="${HOME}/.config/opencode/tasks"
+                if [[ -d "$tasks_dir" ]]; then
+                    tasks=$(command ls -1d "$tasks_dir"/*/ 2>/dev/null | xargs -r -n1 basename)
+                fi
+                mapfile -t COMPREPLY < <(compgen -W "$tasks" -- "$cur")
+                return
+                ;;
+            completion)
+                mapfile -t COMPREPLY < <(compgen -W "bash zsh" -- "$cur")
+                return
+                ;;
+        esac
+    fi
+
+    if [[ $COMP_CWORD -eq 3 ]]; then
+        case "${COMP_WORDS[1]}" in
+            remove|rm|delete)
+                mapfile -t COMPREPLY < <(compgen -W "--force -f" -- "$cur")
+                return
+                ;;
+        esac
+    fi
+}
+
+complete -F _aid_completions aid
+BASH_COMPLETION
+            ;;
+        zsh)
+            cat <<'ZSH_COMPLETION'
+#compdef aid
+
+_aid() {
+    local -a commands tasks
+
+    commands=(
+        'new:Create new task and start working'
+        'status:List tasks by status'
+        'list:List tasks by status'
+        'ls:List tasks by status'
+        'view:Open PR in browser or show task info'
+        'approve:Merge PR and cleanup'
+        'remove:Remove a task'
+        'rm:Remove a task'
+        'delete:Remove a task'
+        'cleanup:Remove merged/closed tasks'
+        'clean:Remove merged/closed tasks'
+        'help:Show help'
+        'completion:Output shell completion script'
+    )
+
+    _aid_task_ids() {
+        local tasks_dir="${HOME}/.config/opencode/tasks"
+        if [[ -d "$tasks_dir" ]]; then
+            local -a ids
+            ids=( "${tasks_dir}"/*(N/:t) )
+            compadd -a ids
+        fi
+    }
+
+    if (( CURRENT == 2 )); then
+        _describe 'command' commands
+        _aid_task_ids
+        return
+    fi
+
+    case "${words[2]}" in
+        view|approve|remove|rm|delete)
+            if (( CURRENT == 3 )); then
+                _aid_task_ids
+            elif (( CURRENT == 4 )); then
+                case "${words[2]}" in
+                    remove|rm|delete)
+                        local -a force_opts
+                        force_opts=('--force:Force remove even with open PR' '-f:Force remove even with open PR')
+                        _describe 'option' force_opts
+                        ;;
+                esac
+            fi
+            ;;
+        completion)
+            if (( CURRENT == 3 )); then
+                local -a shells
+                shells=('bash:Bash completion' 'zsh:Zsh completion')
+                _describe 'shell' shells
+            fi
+            ;;
+        new)
+            _message 'task description or GitHub issue URL'
+            ;;
+    esac
+}
+
+_aid "$@"
+ZSH_COMPLETION
+            ;;
+        "")
+            cat <<EOF
+Usage: aid completion <shell>
+
+Generate shell completion script.
+
+Supported shells: bash, zsh
+
+Setup:
+  # Bash (add to ~/.bashrc)
+  eval "\$(aid completion bash)"
+
+  # Zsh (add to ~/.zshrc)
+  eval "\$(aid completion zsh)"
+EOF
+            ;;
+        *)
+            die "Unsupported shell: $shell. Supported: bash, zsh"
+            ;;
+    esac
+}
+
+# ==============================================================================
 # Main
 # ==============================================================================
 
@@ -885,6 +1037,9 @@ main() {
             ;;
         cleanup|clean)
             cmd_cleanup
+            ;;
+        completion)
+            cmd_completion "${2:-}"
             ;;
         help|--help|-h)
             cmd_help

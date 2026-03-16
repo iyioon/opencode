@@ -785,7 +785,7 @@ cmd_status() {
     fi
 
     if [[ ${#awaiting_review[@]} -gt 0 ]]; then
-        printf "\n${BOLD}AWAITING REVIEW${NC} ${DIM}(run 'aid view <id>' to open PR)${NC}\n"
+        printf "\n${BOLD}AWAITING REVIEW${NC} ${DIM}(run 'aid view <id>' to inspect task details)${NC}\n"
         for entry in "${awaiting_review[@]}"; do
             IFS='|' read -r id url desc <<< "$entry"
             printf "  ${CYAN}%s${NC}  %s  ${DIM}%s${NC}\n" "$id" "$url" "$desc"
@@ -953,30 +953,50 @@ cmd_view() {
     local task_id="$1"
     
     require_cmd jq
-    require_cmd gh
     
     [[ -d "${TASKS_DIR}/${task_id}" ]] || die "Task not found: $task_id"
     
-    local pr_number pr_url repo source status created
+    local pr_number pr_url repo source status created branch worktree source_url
     pr_number=$(get_task_field "$task_id" "pr_number")
     pr_url=$(get_task_field "$task_id" "pr_url")
     repo=$(get_task_field "$task_id" "repo")
     source=$(get_task_field "$task_id" "source")
     status=$(get_task_field "$task_id" "status")
     created=$(get_task_field "$task_id" "created")
-    
-    # If PR exists with valid data, open in browser
-    if [[ -n "$pr_number" && -n "$repo" ]]; then
-        log_info "Opening PR in browser..."
-        gh pr view "$pr_number" --repo "$repo" --web
-    else
-        # No PR yet, show task info
-        printf "\n${BOLD}Task:${NC} %s\n" "$task_id"
-        printf "${BOLD}Status:${NC} %s\n" "$status"
-        printf "${BOLD}Created:${NC} %s\n" "$created"
-        printf "${BOLD}Description:${NC}\n%s\n\n" "$source"
-        log_info "No PR created yet"
+    branch=$(get_task_field "$task_id" "branch")
+    worktree=$(get_task_field "$task_id" "worktree")
+    source_url=$(get_task_field "$task_id" "source_url")
+
+    local source_max=1200
+    local source_preview source_length
+    source_preview=$(truncate_str "$source" "$source_max")
+    source_length=${#source}
+
+    local pr_display="(none)"
+    if [[ -n "$pr_url" && -n "$pr_number" ]]; then
+        pr_display="#${pr_number} (${pr_url})"
+    elif [[ -n "$pr_url" ]]; then
+        pr_display="$pr_url"
+    elif [[ -n "$pr_number" ]]; then
+        pr_display="#${pr_number}"
     fi
+
+    printf "\n${BOLD}Task Details${NC}\n"
+    printf "${BOLD}Task ID:${NC} %s\n" "$task_id"
+    printf "${BOLD}Status:${NC} %s\n" "${status:-unknown}"
+    printf "${BOLD}Created:${NC} %s\n" "${created:-unknown}"
+    printf "${BOLD}Repo:${NC} %s\n" "${repo:-unknown}"
+    printf "${BOLD}Branch:${NC} %s\n" "${branch:-unknown}"
+    printf "${BOLD}Worktree:${NC} %s\n" "${worktree:-unknown}"
+    printf "${BOLD}Source URL:${NC} %s\n" "${source_url:-none}"
+    printf "${BOLD}PR:${NC} %s\n" "$pr_display"
+    printf "\n${BOLD}Source${NC}\n"
+    printf "%s\n" "$source_preview"
+
+    if [[ "$source_length" -gt "$source_max" ]]; then
+        printf "${DIM}... truncated (%s total chars)${NC}\n" "$source_length"
+    fi
+    printf "\n"
 }
 
 cmd_approve() {
@@ -1295,7 +1315,7 @@ ${BOLD}USAGE${NC}
   aid status                     List tasks by status
   aid <task-id>                  Address PR feedback or conflicts (auto-merges if approved)
   aid <pr-url>                   Resume a locally tracked PR by its URL
-  aid view <task-id>             Open PR in browser or show task info
+  aid view <task-id>             Show task details in terminal
   aid review <pr-url>            Run AI review and post feedback on any PR URL
   aid approve <task-id>          Merge PR and cleanup
   aid remove <task-id>           Remove a task (use --force to delete open PRs)

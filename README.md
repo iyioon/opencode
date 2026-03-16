@@ -27,7 +27,7 @@ aid new https://github.com/o/r/issues/1  # From GitHub issue
 aid new https://github.com/o/r/pull/1    # From GitHub PR (fetches description, comments, reviews)
 aid review https://github.com/o/r/pull/1 # Run AI review on any PR URL and post feedback
 aid status                               # List tasks
-aid view <task-id>                       # Open PR in browser
+aid view <task-id>                       # Show task details in terminal
 aid <task-id>                            # Address feedback or conflicts (auto-merges if approved)
 aid approve <task-id>                    # Manually merge and cleanup
 aid remove <task-id>                     # Remove a task (use --force for open PRs)
@@ -44,7 +44,7 @@ aid new "task" → AI works → PR created → Human reviews → aid <id> (auto-
    - It uses the `commands/work.md` template to build the initial startup prompt (equivalent to manually running `/work` with the task text)
 2. AI explores → plans → implements → requests review → creates PR
 3. **Human Review:**
-   - Run `aid view <task-id>` to open the PR on GitHub.
+   - Run `aid view <task-id>` to inspect task metadata (including PR URL) in the terminal.
    - **Leave Feedback:** Comment on specific lines or submit a review requesting changes.
    - **Approve:** Submit an approval review or comment "LGTM" (which triggers auto-merge).
 4. **Resume (`aid <task-id>`):**

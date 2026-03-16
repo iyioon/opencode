@@ -134,6 +134,14 @@ parse_github_pr_url() {
     return 1
 }
 
+normalize_github_pr_url() {
+    local parsed repo number
+    parsed=$(parse_github_pr_url "$1") || return 1
+    repo="${parsed% *}"
+    number="${parsed#* }"
+    printf 'https://github.com/%s/pull/%s\n' "$repo" "$number"
+}
+
 extract_repo_path() {
     echo "$1" | sed -E 's|https?://github\.com/([^/]+/[^/]+)/[^/]+/[0-9]+.*|\1|'
 }
@@ -264,12 +272,15 @@ get_task_field() {
 
 find_task_by_pr() {
     local pr_url="$1"
+    local normalized_input
+    normalized_input=$(normalize_github_pr_url "$pr_url") || normalized_input="$pr_url"
 
     for tfile in "${TASKS_DIR}"/*/task.json; do
         [[ -f "$tfile" ]] || continue
-        local url
+        local url normalized_url
         url=$(jq -r '.pr_url // ""' "$tfile")
-        if [[ "$url" == "$pr_url" ]]; then
+        normalized_url=$(normalize_github_pr_url "$url" 2>/dev/null || printf '%s' "$url")
+        if [[ "$normalized_url" == "$normalized_input" ]]; then
             jq -r '.id' "$tfile"
             return 0
         fi
@@ -459,15 +470,15 @@ cmd_new() {
     elif is_github_pr_url "$input"; then
         require_cmd gh
         is_pr_input=true
-        source_url="$input"
+        source_url=$(normalize_github_pr_url "$input") || source_url="$input"
         local pr_repo
-        pr_repo=$(extract_repo_path "$input")
-        pr_number_input=$(extract_number "$input")
+        pr_repo=$(extract_repo_path "$source_url")
+        pr_number_input=$(extract_number "$source_url")
         repo="$pr_repo"
 
         # Check if a task already tracks this PR
         local existing_task
-        existing_task=$(find_task_by_pr "$input" 2>/dev/null) || true
+        existing_task=$(find_task_by_pr "$source_url" 2>/dev/null) || true
         if [[ -n "$existing_task" ]]; then
             die "A task already tracks this PR: $existing_task. Use 'aid $existing_task' to resume."
         fi
@@ -804,7 +815,9 @@ cmd_resume() {
     
     # Find task by ID or PR URL
     if is_github_pr_url "$input"; then
-        task_id=$(find_task_by_pr "$input") || die "No task found for PR: $input"
+        local normalized_input
+        normalized_input=$(normalize_github_pr_url "$input") || normalized_input="$input"
+        task_id=$(find_task_by_pr "$normalized_input") || die "No task found for PR: $input"
     elif [[ -d "${TASKS_DIR}/${input}" ]]; then
         task_id="$input"
     else
@@ -1060,7 +1073,9 @@ cmd_remove() {
 
     # Resolve task ID
     if is_github_pr_url "$input"; then
-        task_id=$(find_task_by_pr "$input") || die "No task found for PR: $input"
+        local normalized_input
+        normalized_input=$(normalize_github_pr_url "$input") || normalized_input="$input"
+        task_id=$(find_task_by_pr "$normalized_input") || die "No task found for PR: $input"
     elif [[ -d "${TASKS_DIR}/${input}" ]]; then
         task_id="$input"
     else
@@ -1143,10 +1158,10 @@ cmd_review() {
         fi
         [[ -n "${tmp_root:-}" && -d "$tmp_root" ]] && rm -rf "$tmp_root"
     }
-    trap cleanup_review_workspace RETURN
+    trap cleanup_review_workspace EXIT
 
     log_info "Cloning ${repo} into temporary workspace..."
-    git clone --quiet --no-checkout "https://github.com/${repo}.git" "$repo_dir" || \
+    gh repo clone "$repo" "$repo_dir" -- --no-checkout >/dev/null 2>&1 || \
         die "Failed to clone ${repo}"
 
     log_info "Fetching PR refs..."
@@ -1255,6 +1270,8 @@ EOF
         die "Failed to post summary review comment"
 
     log_success "Review submitted (${verdict}). Inline comments: ${inline_count}, findings: ${issue_count}"
+    cleanup_review_workspace
+    trap - EXIT
 }
 
 cmd_help() {

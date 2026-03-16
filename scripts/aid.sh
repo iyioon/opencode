@@ -465,7 +465,17 @@ cmd_new() {
                 else "" end)
             ') || \
             die "Failed to fetch issue"
-        source="$issue_body"
+        source=$(cat <<EOF
+IMPORTANT: This task came from GitHub issue ${issue_repo}#${issue_number}.
+When you create or update the pull request description, include this exact line so GitHub auto-closes the issue on merge:
+
+Closes ${issue_repo}#${issue_number}
+
+Issue details:
+
+${issue_body}
+EOF
+)
         repo="$issue_repo"
     elif is_github_pr_url "$input"; then
         require_cmd gh

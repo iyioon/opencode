@@ -290,8 +290,15 @@ cmd_new() {
         issue_number=$(extract_number "$input")
 
         log_info "Fetching issue #${issue_number} from ${issue_repo}..."
-        issue_body=$(gh issue view "$issue_number" --repo "$issue_repo" --json title,body,number \
-            --jq '"Issue #" + (.number|tostring) + ": " + .title + "\n\n" + .body') || \
+        issue_body=$(gh issue view "$issue_number" --repo "$issue_repo" --json title,body,number,comments \
+            --jq '
+                "Issue #" + (.number|tostring) + ": " + .title + "\n\n" + (.body // "") +
+                ([.comments[] | select((.body // "") != "") |
+                    "Comment by " + (.author.login // "unknown") + ":\n" + .body
+                ] | if length > 0 then
+                    "\n\n--- Issue Comments ---\n\n" + join("\n\n---\n\n")
+                else "" end)
+            ') || \
             die "Failed to fetch issue"
         source="$issue_body"
         repo="$issue_repo"

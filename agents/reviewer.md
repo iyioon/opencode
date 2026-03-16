@@ -1,7 +1,7 @@
 ---
 description: Code reviewer (read-only, fast)
 mode: subagent
-model: github-copilot/claude-sonnet-4.6
+model: github-copilot/gpt-5.3-codex
 temperature: 0.1
 tools:
   write: false

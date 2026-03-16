@@ -1,6 +1,6 @@
 ---
 description: Interactive assistant for GitHub and codebase management
-model: github-copilot/claude-sonnet-4.6
+model: github-copilot/gpt-5.3-codex
 temperature: 0.5
 tools:
   write: false

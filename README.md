@@ -71,6 +71,25 @@ When you run `aid <task-id>` on a task with requested changes:
 
 > **Tip:** Use [tmux](https://github.com/tmux/tmux) to run `aid` in a background pane. This lets you keep tasks running while you work on other things in separate tabs.
 
+## Architect Agent
+
+The **architect** agent is a standalone interactive assistant for conversational use. Unlike the `dispatch` agent (which works autonomously), architect is designed for hands-on sessions where you want help thinking through requirements, managing GitHub, or exploring the codebase.
+
+```bash
+opencode --agent architect
+```
+
+**What it does:**
+- Gathers requirements through clarifying questions before taking action
+- Creates well-structured GitHub issues with acceptance criteria
+- Lists and summarizes PRs, issues, CI status, and branches
+- Explores and explains the codebase architecture
+- Surfaces trade-offs and helps you make design decisions
+
+**What it does not do:**
+- Write or modify code (use `aid` for autonomous tasks instead)
+- Act without confirmation — it always summarizes and asks before executing
+
 ## Statuses
 
 | Status | Meaning |
@@ -109,6 +128,7 @@ aid remove <task-id>
 ~/.config/opencode/
 ├── scripts/aid.sh      # CLI
 ├── agents/
+│   ├── architect.md    # Interactive assistant
 │   ├── dispatch.md     # Task orchestrator
 │   └── reviewer.md     # Code review subagent
 ├── commands/
@@ -137,6 +157,7 @@ The AI follows a structured **Understand → Implement → Review → Fix** cycl
 *   **Dispatch Agent (`agents/dispatch.md`):** The general-purpose orchestrator. It maintains the overall task context and makes decisions. It delegates to specialized agents to keep its own context clean and focused on implementation.
 *   **Explore Agent (built-in):** Optimized for code navigation and search. Used to quickly locate relevant files without cluttering the main agent's context with search results.
 *   **Reviewer Agent (`agents/reviewer.md`):** Optimized for critique. It has no write access, forcing it to be objective. Segregating review into a separate agent reduces bias, as the implementing agent is often biased towards its own code.
+*   **Architect Agent (`agents/architect.md`):** Interactive assistant for conversational sessions. It has no write/edit access and focuses on requirement gathering, GitHub management, and codebase exploration. Separate from the autonomous workflow — used directly via `opencode --agent architect`.
 
 ## Configuration
 

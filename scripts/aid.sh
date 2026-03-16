@@ -122,7 +122,16 @@ is_github_issue_url() {
 }
 
 is_github_pr_url() {
-    [[ "$1" =~ ^https?://github\.com/[^/]+/[^/]+/pull/[0-9]+$ ]]
+    [[ "$1" =~ ^https?://github\.com/[^/]+/[^/]+/pull/[0-9]+([/?#].*)?$ ]]
+}
+
+parse_github_pr_url() {
+    local url="$1"
+    if [[ "$url" =~ ^https?://github\.com/([^/]+)/([^/]+)/pull/([0-9]+)([/?#].*)?$ ]]; then
+        printf '%s\n' "${BASH_REMATCH[1]}/${BASH_REMATCH[2]} ${BASH_REMATCH[3]}"
+        return 0
+    fi
+    return 1
 }
 
 extract_repo_path() {
@@ -130,7 +139,9 @@ extract_repo_path() {
 }
 
 extract_number() {
-    echo "$1" | grep -oE '[0-9]+$'
+    if [[ "$1" =~ /([0-9]+)([/?#].*)?$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+    fi
 }
 
 get_current_repo_path() {
@@ -298,6 +309,107 @@ _cleanup_task_artifacts() {
 
     # Remove task record
     rm -rf "${TASKS_DIR}/${task_id}"
+}
+
+line_in_pr_diff() {
+    local worktree="$1"
+    local base_ref="$2"
+    local path="$3"
+    local line_no="$4"
+
+    local diff
+    diff=$(git -C "$worktree" diff --unified=0 "origin/${base_ref}...HEAD" -- "$path" 2>/dev/null || true)
+    [[ -n "$diff" ]] || return 1
+
+    local header start count end
+    while IFS= read -r header; do
+        [[ "$header" =~ ^@@[[:space:]]-[0-9]+(,[0-9]+)?[[:space:]]\+([0-9]+)(,([0-9]+))?[[:space:]]@@ ]] || continue
+        start="${BASH_REMATCH[2]}"
+        count="${BASH_REMATCH[4]:-1}"
+        [[ "$count" -gt 0 ]] || continue
+        end=$((start + count - 1))
+        if [[ "$line_no" -ge "$start" && "$line_no" -le "$end" ]]; then
+            return 0
+        fi
+    done <<< "$diff"
+
+    return 1
+}
+
+extract_reviewer_verdict() {
+    local review_text="$1"
+    local verdict=""
+
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^(PASS|NEEDS_FIXES)$ ]]; then
+            verdict="$line"
+            break
+        fi
+    done <<< "$review_text"
+
+    printf '%s' "$verdict"
+}
+
+extract_reviewer_issues() {
+    local review_text="$1"
+
+    while IFS= read -r line; do
+        [[ "$line" =~ ^-[[:space:]]\[([^]]+)\][[:space:]](.+)$ ]] || continue
+        local location description path line_no
+        location="${BASH_REMATCH[1]}"
+        description="${BASH_REMATCH[2]}"
+        [[ "$location" =~ ^(.+):([0-9]+)$ ]] || continue
+        path="${BASH_REMATCH[1]}"
+        line_no="${BASH_REMATCH[2]}"
+        printf '%s\t%s\t%s\n' "$path" "$line_no" "$description"
+    done <<< "$review_text"
+}
+
+build_review_summary() {
+    local verdict="$1"
+    local pr_url="$2"
+    local inline_count="$3"
+    local issue_count="$4"
+    local fallback_notes="$5"
+    local review_text="$6"
+
+    local headline
+    if [[ "$verdict" == "PASS" ]]; then
+        headline="AI review verdict: PASS"
+    else
+        headline="AI review verdict: NEEDS_FIXES"
+    fi
+
+    local summary
+    summary=$(cat <<EOF
+${headline}
+
+Reviewed PR: ${pr_url}
+- Inline comments posted: ${inline_count}
+- Findings detected: ${issue_count}
+
+## Key Findings
+EOF
+)
+
+    if [[ "$issue_count" -eq 0 ]]; then
+        summary+=$'\n- None.\n'
+    else
+        local issues
+        issues=$(extract_reviewer_issues "$review_text")
+        if [[ -n "$issues" ]]; then
+            while IFS=$'\t' read -r path line_no description; do
+                summary+="- [${path}:${line_no}] ${description}"$'\n'
+            done <<< "$issues"
+        fi
+    fi
+
+    if [[ -n "$fallback_notes" ]]; then
+        summary+=$'\n## Summary-Only Notes\n'
+        summary+="$fallback_notes"
+    fi
+
+    printf '%s' "$summary"
 }
 
 # ==============================================================================
@@ -982,6 +1094,169 @@ cmd_remove() {
     log_success "Task ${task_id} removed"
 }
 
+cmd_review() {
+    local pr_url="$1"
+
+    require_cmd gh
+    require_cmd git
+    require_cmd jq
+    require_cmd opencode
+
+    is_github_pr_url "$pr_url" || die "Usage: aid review <github-pr-url>"
+
+    local parsed repo pr_number
+    parsed=$(parse_github_pr_url "$pr_url") || die "Invalid GitHub PR URL: $pr_url"
+    repo="${parsed% *}"
+    pr_number="${parsed#* }"
+
+    local pr_json
+    pr_json=$(gh pr view "$pr_number" --repo "$repo" \
+        --json url,state,number,title,baseRefName,headRefName,headRefOid,headRepositoryOwner,isCrossRepository 2>/dev/null) || \
+        die "Failed to access PR #${pr_number} in ${repo}. Check URL and GitHub access."
+
+    local base_ref head_ref head_sha pr_state
+    base_ref=$(echo "$pr_json" | jq -r '.baseRefName')
+    head_ref=$(echo "$pr_json" | jq -r '.headRefName')
+    head_sha=$(echo "$pr_json" | jq -r '.headRefOid')
+    pr_state=$(echo "$pr_json" | jq -r '.state')
+
+    [[ -n "$base_ref" && "$base_ref" != "null" ]] || die "PR metadata missing base ref"
+    [[ -n "$head_ref" && "$head_ref" != "null" ]] || die "PR metadata missing head ref"
+    [[ -n "$head_sha" && "$head_sha" != "null" ]] || die "PR metadata missing head SHA"
+
+    if [[ "$pr_state" != "OPEN" ]]; then
+        log_warn "PR is ${pr_state}. Posting review comments anyway."
+    fi
+
+    local changed_files
+    changed_files=$(gh api "repos/${repo}/pulls/${pr_number}/files" --paginate --jq '.[].filename' 2>/dev/null) || \
+        die "Failed to fetch changed files for PR #${pr_number}"
+
+    local tmp_root repo_dir worktree
+    tmp_root=$(mktemp -d)
+    repo_dir="${tmp_root}/repo"
+    worktree="${tmp_root}/worktree"
+
+    cleanup_review_workspace() {
+        if [[ -n "${repo_dir:-}" && -d "$repo_dir" && -n "${worktree:-}" && -d "$worktree" ]]; then
+            git -C "$repo_dir" worktree remove "$worktree" --force >/dev/null 2>&1 || true
+        fi
+        [[ -n "${tmp_root:-}" && -d "$tmp_root" ]] && rm -rf "$tmp_root"
+    }
+    trap cleanup_review_workspace RETURN
+
+    log_info "Cloning ${repo} into temporary workspace..."
+    git clone --quiet --no-checkout "https://github.com/${repo}.git" "$repo_dir" || \
+        die "Failed to clone ${repo}"
+
+    log_info "Fetching PR refs..."
+    git -C "$repo_dir" fetch --quiet origin \
+        "+refs/heads/${base_ref}:refs/remotes/origin/${base_ref}" \
+        "+refs/pull/${pr_number}/head:refs/remotes/origin/pr-${pr_number}-head" || \
+        die "Failed to fetch PR refs for #${pr_number}"
+
+    log_info "Creating temporary worktree for PR head branch..."
+    git -C "$repo_dir" worktree add --detach "$worktree" "refs/remotes/origin/pr-${pr_number}-head" >/dev/null || \
+        die "Failed to create temporary worktree"
+
+    local changed_list
+    if [[ -n "$changed_files" ]]; then
+        changed_list=$(printf '%s\n' "$changed_files" | sed 's/^/- /')
+    else
+        changed_list="- (No changed files returned by GitHub API)"
+    fi
+
+    local review_prompt
+    review_prompt=$(cat <<EOF
+Review this GitHub pull request and return output exactly in your configured format.
+
+PR URL: ${pr_url}
+Repository: ${repo}
+PR Number: ${pr_number}
+Base branch: ${base_ref}
+Head branch: ${head_ref}
+Head SHA: ${head_sha}
+
+Prioritize review coverage for changed files listed below, but read any other repository files as needed to verify indirect impacts, regressions, and standards.
+
+Changed files:
+${changed_list}
+
+For each concrete finding, include an issue bullet with location in this exact shape:
+- [path/to/file.ext:123] description
+
+If no issues are found, output "None" in the Issues section and verdict PASS.
+EOF
+)
+
+    log_info "Running AI review..."
+    local review_text
+    review_text=$(opencode run --agent reviewer --format json --dir "$worktree" "$review_prompt" \
+        | jq -r 'select(.type == "text") | .part.text' 2>/dev/null) || \
+        die "AI review failed"
+
+    [[ -n "$review_text" ]] || die "AI review returned empty output"
+
+    local verdict
+    verdict=$(extract_reviewer_verdict "$review_text")
+    if [[ "$verdict" != "PASS" && "$verdict" != "NEEDS_FIXES" ]]; then
+        if extract_reviewer_issues "$review_text" | grep -q .; then
+            verdict="NEEDS_FIXES"
+        else
+            verdict="PASS"
+        fi
+    fi
+
+    local inline_count=0
+    local issue_count=0
+    local fallback_notes=""
+    local issue_lines
+    issue_lines=$(extract_reviewer_issues "$review_text")
+
+    local changed_set_file
+    changed_set_file="${tmp_root}/changed_files.txt"
+    printf '%s\n' "$changed_files" > "$changed_set_file"
+
+    if [[ -n "$issue_lines" ]]; then
+        while IFS=$'\t' read -r path line_no description; do
+            [[ -n "$path" && -n "$line_no" && -n "$description" ]] || continue
+            issue_count=$((issue_count + 1))
+
+            if ! grep -Fxq "$path" "$changed_set_file"; then
+                fallback_notes+="- [${path}:${line_no}] ${description} (outside changed files; posted in summary only)"$'\n'
+                continue
+            fi
+
+            if ! line_in_pr_diff "$worktree" "$base_ref" "$path" "$line_no"; then
+                fallback_notes+="- [${path}:${line_no}] ${description} (line not mappable to PR diff; posted in summary only)"$'\n'
+                continue
+            fi
+
+            if gh api -X POST "repos/${repo}/pulls/${pr_number}/comments" \
+                -f body="AI review: ${description}" \
+                -f commit_id="$head_sha" \
+                -f path="$path" \
+                -F line="$line_no" \
+                -f side="RIGHT" >/dev/null 2>&1; then
+                inline_count=$((inline_count + 1))
+            else
+                fallback_notes+="- [${path}:${line_no}] ${description} (GitHub rejected inline mapping; posted in summary only)"$'\n'
+            fi
+        done <<< "$issue_lines"
+    fi
+
+    local summary_body
+    summary_body=$(build_review_summary "$verdict" "$pr_url" "$inline_count" "$issue_count" "$fallback_notes" "$review_text")
+
+    log_info "Posting summary PR review comment..."
+    gh api -X POST "repos/${repo}/pulls/${pr_number}/reviews" \
+        -f event="COMMENT" \
+        -f body="$summary_body" >/dev/null || \
+        die "Failed to post summary review comment"
+
+    log_success "Review submitted (${verdict}). Inline comments: ${inline_count}, findings: ${issue_count}"
+}
+
 cmd_help() {
     cat <<EOF
 ${BOLD}aid${NC} - AI Development Workflow v${VERSION}
@@ -994,6 +1269,7 @@ ${BOLD}USAGE${NC}
   aid <task-id>                  Address PR feedback or conflicts (auto-merges if approved)
   aid <pr-url>                   Resume a locally tracked PR by its URL
   aid view <task-id>             Open PR in browser or show task info
+  aid review <pr-url>            Run AI review and post feedback on any PR URL
   aid approve <task-id>          Merge PR and cleanup
   aid remove <task-id>           Remove a task (use --force to delete open PRs)
   aid cleanup                    Remove merged/closed tasks
@@ -1053,6 +1329,10 @@ main() {
         view)
             [[ -n "${2:-}" ]] || die "Usage: aid view <task-id>"
             cmd_view "$2"
+            ;;
+        review)
+            [[ -n "${2:-}" ]] || die "Usage: aid review <github-pr-url>"
+            cmd_review "$2"
             ;;
         approve)
             [[ -n "${2:-}" ]] || die "Usage: aid approve <task-id>"

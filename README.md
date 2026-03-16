@@ -25,6 +25,7 @@ source ~/.bashrc  # or ~/.zshrc
 aid new "Add dark mode toggle"           # Start new task
 aid new https://github.com/o/r/issues/1  # From GitHub issue
 aid new https://github.com/o/r/pull/1    # From GitHub PR (fetches description, comments, reviews)
+aid review https://github.com/o/r/pull/1 # Run AI review on any PR URL and post feedback
 aid status                               # List tasks
 aid view <task-id>                       # Open PR in browser
 aid <task-id>                            # Address feedback or conflicts (auto-merges if approved)
@@ -50,6 +51,20 @@ aid new "task" → AI works → PR created → Human reviews → aid <id> (auto-
    - **Fixes:** If there is feedback (changes requested or comments), the AI fetches your comments, plans a fix, implements it, and pushes updates.
    - **Merge:** If you approved or commented "LGTM", the tool automatically merges the PR and cleans up the task (deletes local worktree and branch).
 5. `aid approve <task-id>` to manually merge if needed
+
+## Ad-hoc PR Review (`aid review <pr-url>`)
+
+Use `aid review <pr-url>` when you want AI feedback on any GitHub pull request URL, including PRs that are not tracked in your local `aid` task list.
+
+What it does:
+
+1. Validates the PR URL and fetches PR metadata (repo, number, base/head refs, head SHA).
+2. Creates a temporary local clone + worktree for the PR head ref so the AI can read code accurately.
+3. Runs the `reviewer` agent with a strong focus on changed files, while allowing full-repo context reads for indirect impacts.
+4. Posts inline PR comments for concrete issues that can be mapped to `file:line` in the PR diff.
+5. Posts a summary PR review comment with verdict (`PASS` or `NEEDS_FIXES`) using GitHub review state `COMMENT` only.
+6. Falls back to summary-only notes when a finding cannot be mapped to a valid inline location.
+7. Always removes the temporary review worktree and local clone, including failure paths where possible.
 
 ## How Feedback Works
 
